@@ -65,6 +65,59 @@ function validatePassword(password) {
   return null;
 }
 
+function isBoostPlan(plan) {
+  return String(plan || '').toLowerCase() === 'boost';
+}
+
+async function applyPurchasedEntitlement({ userId, plan }) {
+  if (!firestore || !userId) return;
+
+  const userRef = firestore.collection('users').doc(userId);
+
+  if (isBoostPlan(plan)) {
+    const userSnap = await userRef.get();
+    const userData = userSnap.exists ? userSnap.data() || {} : {};
+    const currentBoost = userData.boostExpiresAt;
+    const currentBoostMs =
+      currentBoost && typeof currentBoost.toMillis === 'function'
+        ? currentBoost.toMillis()
+        : 0;
+    const startMs = currentBoostMs > Date.now() ? currentBoostMs : Date.now();
+    const boostExpiresAt = admin.firestore.Timestamp.fromMillis(
+      startMs + 24 * 60 * 60 * 1000
+    );
+
+    await userRef.set(
+      {
+        boostExpiresAt,
+        lastBoostPurchasedAt: admin.firestore.FieldValue.serverTimestamp(),
+        activeBoostPlan: plan,
+      },
+      { merge: true }
+    );
+    return;
+  }
+
+  await userRef.set(
+    {
+      isPremium: true,
+      premiumSince: admin.firestore.FieldValue.serverTimestamp(),
+      premiumPlan: plan,
+    },
+    { merge: true }
+  );
+}
+
+function purchaseNotificationTitle(plan) {
+  return isBoostPlan(plan) ? 'Boost Activated' : 'Premium Unlocked';
+}
+
+function purchaseNotificationBody({ userId, plan }) {
+  return isBoostPlan(plan)
+    ? `User ${userId || 'unknown'} activated a profile boost`
+    : `User ${userId || 'unknown'} upgraded to ${plan}`;
+}
+
 // Africa's Talking SMS client (recommended for Nigeria)
 let atSms = null;
 if (process.env.AFRICASTALKING_USERNAME && process.env.AFRICASTALKING_API_KEY) {
@@ -523,13 +576,10 @@ app.post('/stripe-webhook', express.raw({ type: 'application/json' }), async (re
 
         if (userId) {
           try {
-            await firestore.collection('users').doc(userId).set(
-              { isPremium: true, premiumSince: admin.firestore.FieldValue.serverTimestamp(), premiumPlan: plan },
-              { merge: true }
-            );
-            console.log('User marked premium via Stripe webhook:', userId);
+            await applyPurchasedEntitlement({ userId, plan });
+            console.log('User entitlement updated via Stripe webhook:', userId, plan);
           } catch (err) {
-            console.error('Failed to update user premium status from webhook:', err);
+            console.error('Failed to update user entitlement from webhook:', err);
           }
         }
       }
@@ -539,7 +589,10 @@ app.post('/stripe-webhook', express.raw({ type: 'application/json' }), async (re
         try {
           const message = {
             topic: 'premium-updates',
-            notification: { title: 'Premium Unlocked', body: `User ${userId || 'unknown'} upgraded to ${plan}` },
+            notification: {
+              title: purchaseNotificationTitle(plan),
+              body: purchaseNotificationBody({ userId, plan }),
+            },
             data: { userId: userId || '', plan: plan, amount: String(amount) },
           };
           const resp = await adminMessaging.send(message);
@@ -551,7 +604,10 @@ app.post('/stripe-webhook', express.raw({ type: 'application/json' }), async (re
         try {
           const payload = JSON.stringify({
             to: '/topics/premium-updates',
-            notification: { title: 'Premium Unlocked', body: `User ${userId || 'unknown'} upgraded to ${plan}` },
+            notification: {
+              title: purchaseNotificationTitle(plan),
+              body: purchaseNotificationBody({ userId, plan }),
+            },
             data: { userId: userId || '', plan: plan, amount: String(amount) },
           });
 
@@ -632,10 +688,7 @@ app.post('/stripe-webhook-test', async (req, res) => {
 
         if (userId) {
           try {
-            await firestore.collection('users').doc(userId).set(
-              { isPremium: true, premiumSince: admin.firestore.FieldValue.serverTimestamp(), premiumPlan: plan },
-              { merge: true }
-            );
+            await applyPurchasedEntitlement({ userId, plan });
           } catch (err) {
             console.error('Test webhook: failed to update user', err);
           }
@@ -646,7 +699,10 @@ app.post('/stripe-webhook-test', async (req, res) => {
         try {
           const message = {
             topic: 'premium-updates',
-            notification: { title: 'Premium Unlocked (test)', body: `User ${userId || 'unknown'} upgraded to ${plan}` },
+            notification: {
+              title: `${purchaseNotificationTitle(plan)} (test)`,
+              body: purchaseNotificationBody({ userId, plan }),
+            },
             data: { userId: userId || '', plan: plan, amount: String(amount) },
           };
           await adminMessaging.send(message);
@@ -699,13 +755,10 @@ app.post('/mock-payment-success', (req, res) => {
         if (userId) {
           try {
             const userRef = firestore.collection('users').doc(userId);
-            await userRef.set(
-              { isPremium: true, premiumSince: admin.firestore.FieldValue.serverTimestamp(), premiumPlan: plan },
-              { merge: true }
-            );
-            console.log('Firestore updated for user', userId);
+            await applyPurchasedEntitlement({ userId, plan });
+            console.log('Firestore updated for user', userId, plan);
           } catch (err) {
-            console.error('Failed to update user premium status:', err);
+            console.error('Failed to update user entitlement:', err);
           }
         }
       }
@@ -713,7 +766,10 @@ app.post('/mock-payment-success', (req, res) => {
       if (adminMessaging) {
         const message = {
           topic: 'premium-updates',
-          notification: { title: 'Premium Unlocked', body: `User ${userId || 'unknown'} upgraded to ${plan}` },
+          notification: {
+            title: purchaseNotificationTitle(plan),
+            body: purchaseNotificationBody({ userId, plan }),
+          },
           data: { userId: userId || '', plan: plan, amount: String(amount) },
         };
         const resp = await adminMessaging.send(message);
@@ -724,8 +780,8 @@ app.post('/mock-payment-success', (req, res) => {
           const payload = JSON.stringify({
             to: '/topics/premium-updates',
             notification: {
-              title: 'Premium Unlocked',
-              body: `User ${userId || 'unknown'} upgraded to ${plan}`,
+              title: purchaseNotificationTitle(plan),
+              body: purchaseNotificationBody({ userId, plan }),
             },
             data: { userId: userId || '', plan: plan, amount: String(amount) },
           });
@@ -874,6 +930,13 @@ app.post('/matches', async (req, res) => {
 
       // premium boost
       if (p.isPremium) score += 10;
+
+      const boostExpiresAt = p.boostExpiresAt;
+      const boostMs =
+        boostExpiresAt && typeof boostExpiresAt.toMillis === 'function'
+          ? boostExpiresAt.toMillis()
+          : 0;
+      if (boostMs > Date.now()) score += 18;
 
       // Age closeness bonus if filter range provided
       if (minAge != null && maxAge != null && p.age != null) {
