@@ -26,6 +26,21 @@ function normalizePhone(phone) {
   return null;
 }
 
+function normalizeServiceAccount(rawServiceAccount) {
+  if (!rawServiceAccount || typeof rawServiceAccount !== 'object') {
+    return rawServiceAccount;
+  }
+
+  const serviceAccount = { ...rawServiceAccount };
+  if (typeof serviceAccount.private_key === 'string') {
+    serviceAccount.private_key = serviceAccount.private_key
+      .replace(/\\n/g, '\n')
+      .trim();
+  }
+
+  return serviceAccount;
+}
+
 function createPasswordHash(password) {
   const salt = crypto.randomBytes(16).toString('hex');
   const hash = crypto.scryptSync(password, salt, 64).toString('hex');
@@ -116,7 +131,9 @@ let firestore = null;
 let adminMessaging = null;
 if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
   try {
-    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
+    const serviceAccount = normalizeServiceAccount(
+      JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON)
+    );
     admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
     firestore = admin.firestore();
     adminMessaging = admin.messaging();
@@ -126,7 +143,9 @@ if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
   }
 } else if (process.env.FIREBASE_SERVICE_ACCOUNT_PATH && fs.existsSync(process.env.FIREBASE_SERVICE_ACCOUNT_PATH)) {
   try {
-    const serviceAccount = require(process.env.FIREBASE_SERVICE_ACCOUNT_PATH);
+    const serviceAccount = normalizeServiceAccount(
+      require(process.env.FIREBASE_SERVICE_ACCOUNT_PATH)
+    );
     admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
     firestore = admin.firestore();
     adminMessaging = admin.messaging();
