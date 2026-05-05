@@ -849,8 +849,28 @@ app.post('/matches', async (req, res) => {
     if (!firestore) {
       // Return mocked matches for development when Firestore admin not available.
       const items = [
-        { uid: 'm1', profile: { fullName: 'Aisha', age: 27, profilePictureUrl: null }, score: 85 },
-        { uid: 'm2', profile: { fullName: 'Bilal', age: 30, profilePictureUrl: null }, score: 78 },
+        {
+          uid: 'm1',
+          profile: {
+            fullName: 'Aisha',
+            age: 27,
+            occupation: 'Product Designer',
+            locationLabel: 'Lahore, Pakistan',
+            profilePictureUrl: null,
+          },
+          score: 85,
+        },
+        {
+          uid: 'm2',
+          profile: {
+            fullName: 'Bilal',
+            age: 30,
+            occupation: 'Software Engineer',
+            locationLabel: 'Karachi, Pakistan',
+            profilePictureUrl: null,
+          },
+          score: 78,
+        },
       ];
       return res.json({ total: items.length, items, nextPageToken: null });
     }
@@ -984,7 +1004,24 @@ app.post('/matches', async (req, res) => {
       // Clamp
       score = Math.max(0, Math.min(100, Math.round(score)));
 
-      items.push({ uid: d.id, profile: { fullName: p.fullName || null, age: p.age || null, profilePictureUrl: p.profilePictureUrl || null }, score });
+      const locationLabel = [
+        p.location && p.location.city ? p.location.city : null,
+        p.location && p.location.country ? p.location.country : null,
+      ]
+        .filter(Boolean)
+        .join(', ');
+
+      items.push({
+        uid: d.id,
+        profile: {
+          fullName: p.fullName || null,
+          age: p.age || null,
+          occupation: p.occupation || null,
+          locationLabel: locationLabel || null,
+          profilePictureUrl: p.profilePictureUrl || null,
+        },
+        score,
+      });
       if (items.length >= pageSize) break;
     }
 
