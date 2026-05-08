@@ -139,6 +139,21 @@ if (process.env.AFRICASTALKING_USERNAME && process.env.AFRICASTALKING_API_KEY) {
 const isAfricaTalkingSandbox =
   String(process.env.AFRICASTALKING_USERNAME || '').trim().toLowerCase() === 'sandbox';
 
+const hasBrevoSms =
+  typeof process.env.BREVO_API_KEY === 'string' &&
+  process.env.BREVO_API_KEY.trim().length > 0;
+const otpProviderPreference = String(process.env.OTP_SMS_PROVIDER || 'auto')
+  .trim()
+  .toLowerCase();
+
+if (hasBrevoSms) {
+  console.log(
+    `Brevo SMS configured (sender=${String(process.env.BREVO_SMS_SENDER || '').trim() || 'none'}, providerMode=${otpProviderPreference || 'auto'})`
+  );
+} else {
+  console.log('Brevo SMS not configured (BREVO_API_KEY missing)');
+}
+
 function getAfricaTalkingSender() {
   const sender = String(process.env.AFRICASTALKING_SENDER || '').trim();
 
@@ -148,6 +163,293 @@ function getAfricaTalkingSender() {
   if (sender === 'YourSenderID') return undefined;
 
   return sender;
+}
+
+function getBrevoSender() {
+  const sender = String(process.env.BREVO_SMS_SENDER || '').trim();
+  if (!sender) return undefined;
+  return sender;
+}
+
+function normalizePhoneForBrevo(phone) {
+  return String(phone || '').replace(/^\+/, '');
+}
+
+function postJson(url, headers, body) {
+  return new Promise((resolve, reject) => {
+    const payload = JSON.stringify(body);
+    const parsed = new URL(url);
+
+    const req = https.request(
+      {
+        protocol: parsed.protocol,
+        hostname: parsed.hostname,
+        port: parsed.port || 443,
+        path: `${parsed.pathname}${parsed.search || ''}`,
+        method: 'POST',
+        headers: {
+          accept: 'application/json',
+          'content-type': 'application/json',
+          'content-length': Buffer.byteLength(payload),
+          ...headers,
+        },
+      },
+      (response) => {
+        let raw = '';
+        response.on('data', (chunk) => {
+          raw += chunk;
+        });
+        response.on('end', () => {
+          let parsedBody = null;
+          try {
+            parsedBody = raw ? JSON.parse(raw) : null;
+          } catch (_) {
+            parsedBody = raw;
+          }
+          resolve({
+            statusCode: response.statusCode || 0,
+            body: parsedBody,
+            raw,
+          });
+        });
+      }
+    );
+
+    req.on('error', reject);
+    req.write(payload);
+    req.end();
+  });
+}
+
+function getJson(url, headers = {}) {
+  return new Promise((resolve, reject) => {
+    const parsed = new URL(url);
+
+    const req = https.request(
+      {
+        protocol: parsed.protocol,
+        hostname: parsed.hostname,
+        port: parsed.port || 443,
+        path: `${parsed.pathname}${parsed.search || ''}`,
+        method: 'GET',
+        headers: {
+          accept: 'application/json',
+          ...headers,
+        },
+      },
+      (response) => {
+        let raw = '';
+        response.on('data', (chunk) => {
+          raw += chunk;
+        });
+        response.on('end', () => {
+          let parsedBody = null;
+          try {
+            parsedBody = raw ? JSON.parse(raw) : null;
+          } catch (_) {
+            parsedBody = raw;
+          }
+          resolve({
+            statusCode: response.statusCode || 0,
+            body: parsedBody,
+            raw,
+          });
+        });
+      }
+    );
+
+    req.on('error', reject);
+    req.end();
+  });
+}
+
+async function sendOtpViaAfricaTalking({ uid, phone, otp }) {
+  if (!atSms) {
+    return {
+      ok: false,
+      provider: 'africastalking',
+      skipped: true,
+      reason: 'Africa\'s Talking not configured',
+    };
+  }
+
+  const sendOptions = {
+    to: [phone],
+    message: `Your Qubool Nikah verification code is ${otp}`,
+  };
+  const sender = getAfricaTalkingSender();
+  if (sender) sendOptions.from = sender;
+
+  const smsResponse = await atSms.send(sendOptions);
+  console.log(
+    "[AFRICASTALKING SMS RESPONSE]",
+    JSON.stringify(
+      {
+        uid,
+        phone,
+        sender: sender || null,
+        response: smsResponse,
+      },
+      null,
+      2
+    )
+  );
+
+  const recipients = smsResponse?.SMSMessageData?.Recipients;
+  const firstRecipient = Array.isArray(recipients) ? recipients[0] : null;
+  const status = String(firstRecipient?.status || '').toLowerCase();
+  const isAccepted =
+    status === 'success' ||
+    status === 'sent' ||
+    Number(firstRecipient?.statusCode) === 101;
+
+  return {
+    ok: isAccepted,
+    provider: 'africastalking',
+    sender: sender || null,
+    response: smsResponse,
+    recipientStatus: firstRecipient?.status || null,
+    recipientStatusCode: firstRecipient?.statusCode || null,
+  };
+}
+
+async function sendOtpViaBrevo({ uid, phone, otp }) {
+  if (!hasBrevoSms) {
+    return {
+      ok: false,
+      provider: 'brevo',
+      skipped: true,
+      reason: 'Brevo not configured',
+    };
+  }
+
+  const sender = getBrevoSender();
+  const body = {
+    recipient: normalizePhoneForBrevo(phone),
+    content: `Your Qubool Nikah verification code is ${otp}`,
+    type: 'transactional',
+    tag: 'otp',
+  };
+
+  if (sender) {
+    body.sender = sender;
+  }
+  if (process.env.BREVO_SMS_WEBHOOK_URL?.trim()) {
+    body.webUrl = process.env.BREVO_SMS_WEBHOOK_URL.trim();
+  }
+
+  const response = await postJson(
+    'https://api.brevo.com/v3/transactionalSMS/send',
+    {
+      'api-key': process.env.BREVO_API_KEY.trim(),
+    },
+    body
+  );
+
+  console.log(
+    '[BREVO SMS RESPONSE]',
+    JSON.stringify(
+      {
+        uid,
+        phone,
+        sender: sender || null,
+        statusCode: response.statusCode,
+        response: response.body,
+      },
+      null,
+      2
+    )
+  );
+
+  return {
+    ok: response.statusCode >= 200 && response.statusCode < 300,
+    provider: 'brevo',
+    sender: sender || null,
+    statusCode: response.statusCode,
+    response: response.body,
+  };
+}
+
+async function sendOtpMessage({ uid, phone, otp }) {
+  const attempts = [];
+  const providersInOrder =
+    otpProviderPreference === 'brevo'
+      ? ['brevo']
+      : otpProviderPreference === 'africastalking'
+        ? ['africastalking']
+        : otpProviderPreference === 'none' || otpProviderPreference === 'console'
+          ? ['console']
+          : ['africastalking', 'brevo'];
+
+  for (const provider of providersInOrder) {
+    if (provider === 'brevo') {
+      try {
+        const brevoResult = await sendOtpViaBrevo({ uid, phone, otp });
+        attempts.push(brevoResult);
+        if (brevoResult.ok) {
+          return { provider: 'brevo', attempts };
+        }
+      } catch (error) {
+        attempts.push({
+          ok: false,
+          provider: 'brevo',
+          error: error?.message || String(error),
+        });
+        console.warn('[BREVO SMS ERROR]', error?.message || error);
+      }
+      continue;
+    }
+
+    if (provider === 'africastalking') {
+      try {
+        const africaTalkingResult = await sendOtpViaAfricaTalking({ uid, phone, otp });
+        attempts.push(africaTalkingResult);
+        if (africaTalkingResult.ok) {
+          return { provider: 'africastalking', attempts };
+        }
+      } catch (error) {
+        attempts.push({
+          ok: false,
+          provider: 'africastalking',
+          error: error?.message || String(error),
+        });
+        console.warn('[AFRICASTALKING SMS ERROR]', error?.message || error);
+      }
+      continue;
+    }
+
+    if (provider === 'console') {
+      console.log(`[DEV OTP] uid=${uid} phone=${phone} otp=${otp}`);
+      return {
+        provider: 'console',
+        attempts: [
+          ...attempts,
+          {
+            ok: true,
+            provider: 'console',
+          },
+        ],
+      };
+    }
+  }
+
+  if (!atSms && !hasBrevoSms) {
+    console.log(`[DEV OTP] uid=${uid} phone=${phone} otp=${otp}`);
+    return {
+      provider: 'console',
+      attempts: [
+        ...attempts,
+        {
+          ok: true,
+          provider: 'console',
+        },
+      ],
+    };
+  }
+
+  const error = new Error('All OTP delivery providers failed.');
+  error.attempts = attempts;
+  throw error;
 }
 
 const app = express();
@@ -243,30 +545,24 @@ async function setOtpForUser({ uid, phone }) {
     `[OTP GENERATED] uid=${uid} phone=${normalized} otp=${otp} expiresAt=${new Date(expiresAt).toISOString()} ttlSeconds=${Math.round(ttlMs / 1000)}`
   );
 
-  if (atSms) {
-    const sendOptions = {
-      to: [normalized],
-      message: `Your Qubool Nikah verification code is ${otp}`,
-    };
-    const sender = getAfricaTalkingSender();
-    if (sender) sendOptions.from = sender;
-    const smsResponse = await atSms.send(sendOptions);
-    console.log(
-      "[AFRICASTALKING SMS RESPONSE]",
-      JSON.stringify(
-        {
-          uid,
-          phone: normalized,
-          sender: sender || null,
-          response: smsResponse,
-        },
-        null,
-        2
-      )
-    );
-  } else {
-    console.log(`[DEV OTP] uid=${uid} phone=${normalized} otp=${otp} (expires in ${Math.round(ttlMs / 1000)}s)`);
-  }
+  const delivery = await sendOtpMessage({
+    uid,
+    phone: normalized,
+    otp,
+  });
+  console.log(
+    '[OTP DELIVERY RESULT]',
+    JSON.stringify(
+      {
+        uid,
+        phone: normalized,
+        provider: delivery.provider,
+        attempts: delivery.attempts,
+      },
+      null,
+      2
+    )
+  );
 
   return { normalized, sentAt: new Date().toISOString() };
 }
@@ -296,6 +592,43 @@ async function getPhoneAccount(normalizedPhone) {
 }
 
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
+
+app.get('/debug/brevo-sms-events', async (req, res) => {
+  try {
+    if (!hasBrevoSms) {
+      return res.status(500).json({ error: 'Brevo SMS not configured' });
+    }
+
+    const params = new URLSearchParams();
+    params.set('sort', String(req.query.sort || 'desc'));
+    params.set('limit', String(req.query.limit || 20));
+    params.set('offset', String(req.query.offset || 0));
+    if (req.query.days) params.set('days', String(req.query.days));
+    if (req.query.startDate) params.set('startDate', String(req.query.startDate));
+    if (req.query.endDate) params.set('endDate', String(req.query.endDate));
+    if (req.query.tag) params.set('tag', String(req.query.tag));
+    if (req.query.event) params.set('event', String(req.query.event));
+    if (req.query.phoneNumber) {
+      params.set('phoneNumber', String(req.query.phoneNumber).replace(/^\+/, ''));
+    }
+
+    const response = await getJson(
+      `https://api.brevo.com/v3/transactionalSMS/statistics/events?${params.toString()}`,
+      {
+        'api-key': process.env.BREVO_API_KEY.trim(),
+      }
+    );
+
+    return res.status(response.statusCode).json({
+      ok: response.statusCode >= 200 && response.statusCode < 300,
+      statusCode: response.statusCode,
+      data: response.body,
+    });
+  } catch (err) {
+    console.error('debug/brevo-sms-events error', err);
+    return res.status(500).json({ error: err.message || 'Failed to fetch Brevo SMS events' });
+  }
+});
 
 app.post('/auth/register-phone', async (req, res) => {
   try {
