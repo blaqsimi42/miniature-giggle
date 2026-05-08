@@ -239,6 +239,10 @@ async function setOtpForUser({ uid, phone }) {
     { merge: true }
   );
 
+  console.log(
+    `[OTP GENERATED] uid=${uid} phone=${normalized} otp=${otp} expiresAt=${new Date(expiresAt).toISOString()} ttlSeconds=${Math.round(ttlMs / 1000)}`
+  );
+
   if (atSms) {
     const sendOptions = {
       to: [normalized],
@@ -246,8 +250,20 @@ async function setOtpForUser({ uid, phone }) {
     };
     const sender = getAfricaTalkingSender();
     if (sender) sendOptions.from = sender;
-    await atSms.send(sendOptions);
-    console.log("OTP sent via Africa's Talking to", normalized);
+    const smsResponse = await atSms.send(sendOptions);
+    console.log(
+      "[AFRICASTALKING SMS RESPONSE]",
+      JSON.stringify(
+        {
+          uid,
+          phone: normalized,
+          sender: sender || null,
+          response: smsResponse,
+        },
+        null,
+        2
+      )
+    );
   } else {
     console.log(`[DEV OTP] uid=${uid} phone=${normalized} otp=${otp} (expires in ${Math.round(ttlMs / 1000)}s)`);
   }
