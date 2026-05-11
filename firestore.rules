@@ -1,0 +1,202 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function currentUserProfile() {
+      return request.auth != null
+        ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data
+        : null;
+    }
+
+    function requesterIsPremium() {
+      return request.auth != null
+        && currentUserProfile() != null
+        && currentUserProfile().isPremium == true;
+    }
+
+    function validParticipants(participants) {
+      return participants is list
+        && participants.size() == 2
+        && request.auth.uid in participants;
+    }
+
+    function chatParticipants(chatId) {
+      return get(/databases/$(database)/documents/chats/$(chatId)).data.participants;
+    }
+
+    // Public profile data is readable to signed-in users, while contact data
+    // lives in a private subcollection that only the profile owner can access.
+    match /users/{userId} {
+      allow read: if signedIn();
+      // Allow clients to create/update their own profile but forbid changing
+      // `isPremium` from the client side. `isPremium` should only be set
+      // by a trusted backend (Cloud Function or server with Admin SDK).
+      allow create: if request.auth.uid == userId
+        && (
+          // If `isPremium` is provided on create it must be false (clients cannot mark themselves premium)
+          !(request.resource.data.keys().hasAny(['isPremium']))
+          || request.resource.data.isPremium == false
+        );
+
+      allow update: if request.auth.uid == userId
+        && (
+          // Disallow changing `isPremium` from client: either it's not present in the update
+          // or it remains equal to the previous value.
+          !(request.resource.data.keys().hasAny(['isPremium']))
+          || request.resource.data.isPremium == resource.data.isPremium
+        );
+
+      match /private/{documentId} {
+        allow read, write: if request.auth.uid == userId;
+      }
+
+      match /notifications/{notificationId} {
+        allow read: if request.auth.uid == userId;
+
+        allow create: if signedIn()
+          && request.resource.data.receiverId == userId
+          && request.resource.data.actorId == request.auth.uid
+          && request.resource.data.type is string
+          && request.resource.data.category is string
+          && request.resource.data.title is string
+          && request.resource.data.body is string
+          && request.resource.data.isRead == false;
+
+        allow update: if request.auth.uid == userId
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'isRead',
+            'isSeen',
+            'readAt',
+            'seenAt'
+          ]);
+
+        allow delete: if false;
+      }
+    }
+
+    // Server-maintained mapping from normalized phone -> uid. Clients must not
+    // write directly to this collection; the mapping is maintained by a
+    // trusted Cloud Function using the Admin SDK.
+    match /phone_index/{phoneId} {
+      // Allow reads from clients so unauthenticated login flows can lookup
+      // the auth email/uid for a phone number. Writes must be server-only.
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /chats/{chatId} {
+      allow read: if signedIn() && request.auth.uid in resource.data.participants;
+      allow create, update: if signedIn()
+        && requesterIsPremium()
+        && validParticipants(request.resource.data.participants);
+
+      match /messages/{messageId} {
+        allow read: if signedIn() &&
+          request.auth.uid in chatParticipants(chatId);
+        allow create: if signedIn() &&
+          requesterIsPremium() &&
+          exists(/databases/$(database)/documents/chats/$(chatId)) &&
+          request.resource.data.senderId == request.auth.uid &&
+          request.resource.data.receiverId in chatParticipants(chatId) &&
+          request.auth.uid in chatParticipants(chatId);
+        allow update: if signedIn() &&
+          request.auth.uid in chatParticipants(chatId) &&
+          request.resource.data.senderId == resource.data.senderId &&
+          request.resource.data.receiverId == resource.data.receiverId &&
+          request.resource.data.timestamp == resource.data.timestamp &&
+          (
+            (
+              request.auth.uid == resource.data.senderId &&
+              request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                'message',
+                'imageUrl',
+                'replyToMessageId',
+                'replyToText',
+                'replyToImageUrl',
+                'replyToSenderId',
+                'isDeleted',
+                'editedAt',
+                'deliveredAt'
+              ])
+            ) ||
+            (
+              request.auth.uid == resource.data.receiverId &&
+              request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                'readAt',
+                'deliveredAt'
+              ])
+            )
+          );
+      }
+    }
+
+    match /interactions/{interactionId} {
+      allow read: if signedIn() && (
+        resource.data.userId == request.auth.uid ||
+        resource.data.senderId == request.auth.uid ||
+        resource.data.receiverId == request.auth.uid ||
+        resource.data.likedUserId == request.auth.uid ||
+        resource.data.shortlistedUserId == request.auth.uid ||
+        resource.data.viewedUserId == request.auth.uid ||
+        resource.data.blockedUserId == request.auth.uid
+      );
+
+      allow create: if signedIn() && (
+        (
+          request.resource.data.type == 'interest' &&
+          request.resource.data.senderId == request.auth.uid &&
+          request.resource.data.receiverId is string
+        ) ||
+        (
+          request.resource.data.type in ['like', 'likedBy'] &&
+          request.resource.data.userId == request.auth.uid &&
+          request.resource.data.likedUserId is string
+        ) ||
+        (
+          request.resource.data.type == 'shortlist' &&
+          request.resource.data.userId == request.auth.uid &&
+          request.resource.data.shortlistedUserId is string
+        ) ||
+        (
+          request.resource.data.type == 'view' &&
+          request.resource.data.userId == request.auth.uid &&
+          request.resource.data.viewedUserId is string
+        ) ||
+        (
+          request.resource.data.type == 'block' &&
+          request.resource.data.userId == request.auth.uid &&
+          request.resource.data.blockedUserId is string
+        )
+      );
+
+      allow update: if signedIn() && (
+        (
+          resource.data.type == 'interest' &&
+          resource.data.receiverId == request.auth.uid &&
+          request.resource.data.senderId == resource.data.senderId &&
+          request.resource.data.receiverId == resource.data.receiverId &&
+          request.resource.data.type == resource.data.type
+        ) ||
+        (
+          resource.data.type in ['like', 'likedBy', 'shortlist', 'view', 'block'] &&
+          resource.data.userId == request.auth.uid &&
+          request.resource.data.userId == resource.data.userId &&
+          request.resource.data.type == resource.data.type
+        )
+      );
+
+      allow delete: if signedIn() && (
+        resource.data.userId == request.auth.uid ||
+        resource.data.senderId == request.auth.uid
+      );
+    }
+
+    // Deny all other access
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

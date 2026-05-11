@@ -1395,7 +1395,9 @@ app.post('/send-otp', async (req, res) => {
     return res.json({ success: true, sentAt: result.sentAt, phone: result.normalized });
   } catch (err) {
     console.error('send-otp error', err);
-    return res.status(500).json({ error: String(err) });
+    const resp = { error: String(err) };
+    if (err && err.attempts) resp.attempts = err.attempts;
+    return res.status(500).json(resp);
   }
 });
 

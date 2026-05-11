@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "168320255818",
+    "project_id": "matrimonial-app-7aa7a",
+    "storage_bucket": "matrimonial-app-7aa7a.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:168320255818:android:5dabca9d3756e0d24d23b3",
+        "android_client_info": {
+          "package_name": "com.example.matrimonial_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyANqgeVoMPHLg_N9m1dMt3X_OdSqei23pM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
