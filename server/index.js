@@ -1267,6 +1267,19 @@ app.post('/matches', async (req, res) => {
     const snap = await firestore.collection('users').limit(100).get();
     const docs = snap.docs || [];
     const items = [];
+    const debugCounts = {
+      totalDocs: docs.length,
+      skippedCaller: 0,
+      rejectedMinAge: 0,
+      rejectedMaxAge: 0,
+      rejectedMinHeight: 0,
+      rejectedMaxHeight: 0,
+      rejectedReligion: 0,
+      rejectedOccupation: 0,
+      rejectedLocationLabel: 0,
+      rejectedRadius: 0,
+      included: 0,
+    };
 
     // Parse filters from request
     const f = (req.body && req.body.filters) || {};
@@ -1316,17 +1329,38 @@ app.post('/matches', async (req, res) => {
     const requiredFields = ['fullName', 'age', 'bio', 'profilePictureUrl', 'location'];
 
     for (const d of docs) {
-      if (d.id === callerUid) continue;
+      if (d.id === callerUid) {
+        debugCounts.skippedCaller += 1;
+        continue;
+      }
       const p = d.data() || {};
       const ageValue = p.age != null ? Number(p.age) : calculateAgeFromDob(p.dateOfBirth);
 
       // Apply simple filters (exclude if mismatch)
-      if (minAge != null && (ageValue == null || ageValue < minAge)) continue;
-      if (maxAge != null && (ageValue == null || ageValue > maxAge)) continue;
-      if (minHeight != null && (p.height == null || Number(p.height) < minHeight)) continue;
-      if (maxHeight != null && (p.height == null || Number(p.height) > maxHeight)) continue;
-      if (religionFilter != null && !String((p.religion || '')).toLowerCase().includes(String(religionFilter).toLowerCase())) continue;
-      if (occupationFilter != null && !String((p.occupation || '')).toLowerCase().includes(String(occupationFilter).toLowerCase())) continue;
+      if (minAge != null && (ageValue == null || ageValue < minAge)) {
+        debugCounts.rejectedMinAge += 1;
+        continue;
+      }
+      if (maxAge != null && (ageValue == null || ageValue > maxAge)) {
+        debugCounts.rejectedMaxAge += 1;
+        continue;
+      }
+      if (minHeight != null && (p.height == null || Number(p.height) < minHeight)) {
+        debugCounts.rejectedMinHeight += 1;
+        continue;
+      }
+      if (maxHeight != null && (p.height == null || Number(p.height) > maxHeight)) {
+        debugCounts.rejectedMaxHeight += 1;
+        continue;
+      }
+      if (religionFilter != null && !String((p.religion || '')).toLowerCase().includes(String(religionFilter).toLowerCase())) {
+        debugCounts.rejectedReligion += 1;
+        continue;
+      }
+      if (occupationFilter != null && !String((p.occupation || '')).toLowerCase().includes(String(occupationFilter).toLowerCase())) {
+        debugCounts.rejectedOccupation += 1;
+        continue;
+      }
 
       const locationLabel = [
         p.location && p.location.city ? p.location.city : null,
@@ -1336,13 +1370,19 @@ app.post('/matches', async (req, res) => {
         .filter(Boolean)
         .join(', ');
 
-      if (locationLabelFilter != null && !String(locationLabel).toLowerCase().includes(String(locationLabelFilter).toLowerCase())) continue;
+      if (locationLabelFilter != null && !String(locationLabel).toLowerCase().includes(String(locationLabelFilter).toLowerCase())) {
+        debugCounts.rejectedLocationLabel += 1;
+        continue;
+      }
 
       // Location radius filter
       if (locationFilter && locationFilter.lat != null && locationFilter.lng != null && locationFilter.radiusKm != null) {
         const userLoc = p.location || p.homeLocation || null;
         const dist = userLoc ? haversineKm(locationFilter.lat, locationFilter.lng, Number(userLoc.lat), Number(userLoc.lng)) : null;
-        if (dist == null || dist > Number(locationFilter.radiusKm)) continue;
+        if (dist == null || dist > Number(locationFilter.radiusKm)) {
+          debugCounts.rejectedRadius += 1;
+          continue;
+        }
       }
 
       // Compute heuristic score (0..100)
@@ -1426,8 +1466,15 @@ app.post('/matches', async (req, res) => {
         },
         score,
       });
+      debugCounts.included += 1;
       if (items.length >= pageSize) break;
     }
+
+    console.log('[matches] result summary', {
+      filters: f,
+      counts: debugCounts,
+      returned: items.length,
+    });
 
     return res.json({ total: items.length, items, nextPageToken: null });
   } catch (err) {

@@ -357,6 +357,27 @@ class _MatchesScreenState extends State<MatchesScreen> {
             ],
           ),
         ),
+        if (_hasActiveFilters)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF6FAF7),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFFD6E2D9)),
+              ),
+              child: Text(
+                'Debug filters: ${jsonEncode(_filters)}',
+                style: const TextStyle(
+                  fontSize: 12,
+                  height: 1.4,
+                  color: Color(0xFF0F3D2E),
+                ),
+              ),
+            ),
+          ),
         Expanded(
           child: _loading && filteredItems.isEmpty
               ? const Center(child: CircularProgressIndicator())
@@ -851,105 +872,230 @@ class _MatchesSuggestionField extends StatefulWidget {
 }
 
 class _MatchesSuggestionFieldState extends State<_MatchesSuggestionField> {
-  late final FocusNode _focusNode;
+  Future<void> _openPicker() async {
+    final selected = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => _MatchesOptionPickerSheet(
+        title: widget.label,
+        hintText: widget.hintText,
+        options: widget.suggestions,
+        initialQuery: widget.controller.text,
+      ),
+    );
 
-  @override
-  void initState() {
-    super.initState();
-    _focusNode = FocusNode();
-    widget.controller.addListener(_handleChanged);
-    _focusNode.addListener(_handleChanged);
-  }
-
-  @override
-  void dispose() {
-    widget.controller.removeListener(_handleChanged);
-    _focusNode.removeListener(_handleChanged);
-    _focusNode.dispose();
-    super.dispose();
-  }
-
-  void _handleChanged() {
-    if (mounted) {
-      setState(() {});
-    }
+    if (!mounted || selected == null) return;
+    setState(() {
+      widget.controller.value = TextEditingValue(
+        text: selected,
+        selection: TextSelection.collapsed(offset: selected.length),
+      );
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    final query = widget.controller.text.trim().toLowerCase();
+    return TextField(
+      controller: widget.controller,
+      readOnly: true,
+      onTap: _openPicker,
+      decoration: InputDecoration(
+        labelText: widget.label,
+        hintText: widget.hintText,
+        prefixIcon: Icon(widget.icon, color: const Color(0xFF16A34A)),
+        suffixIcon: widget.controller.text.trim().isEmpty
+            ? const Icon(Icons.keyboard_arrow_down_rounded)
+            : IconButton(
+                onPressed: () {
+                  setState(() {
+                    widget.controller.clear();
+                  });
+                },
+                icon: const Icon(Icons.close_rounded),
+              ),
+        filled: true,
+        fillColor: Colors.white,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 18,
+        ),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(18),
+          borderSide: const BorderSide(color: Color(0xFFD6E2D9)),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(18),
+          borderSide: const BorderSide(color: Color(0xFFD6E2D9)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(18),
+          borderSide: const BorderSide(
+            color: Color(0xFF16A34A),
+            width: 1.4,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MatchesOptionPickerSheet extends StatefulWidget {
+  final String title;
+  final String hintText;
+  final List<String> options;
+  final String initialQuery;
+
+  const _MatchesOptionPickerSheet({
+    required this.title,
+    required this.hintText,
+    required this.options,
+    required this.initialQuery,
+  });
+
+  @override
+  State<_MatchesOptionPickerSheet> createState() =>
+      _MatchesOptionPickerSheetState();
+}
+
+class _MatchesOptionPickerSheetState extends State<_MatchesOptionPickerSheet> {
+  late final TextEditingController _searchController;
+
+  @override
+  void initState() {
+    super.initState();
+    _searchController = TextEditingController(text: widget.initialQuery);
+    _searchController.addListener(_handleChanged);
+  }
+
+  @override
+  void dispose() {
+    _searchController.removeListener(_handleChanged);
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _handleChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final query = _searchController.text.trim().toLowerCase();
     final filtered = (query.isEmpty
-            ? widget.suggestions
-            : widget.suggestions
+            ? widget.options
+            : widget.options
                 .where((option) => option.toLowerCase().contains(query))
                 .toList())
-        .take(8)
         .toList();
-    final showSuggestions = _focusNode.hasFocus && filtered.isNotEmpty;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        TextField(
-          controller: widget.controller,
-          focusNode: _focusNode,
-          decoration: InputDecoration(
-            labelText: widget.label,
-            hintText: widget.hintText,
-            prefixIcon: Icon(widget.icon, color: const Color(0xFF16A34A)),
-            filled: true,
-            fillColor: Colors.white,
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 18,
-            ),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(18),
-              borderSide: const BorderSide(color: Color(0xFFD6E2D9)),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(18),
-              borderSide: const BorderSide(color: Color(0xFFD6E2D9)),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(18),
-              borderSide: const BorderSide(
-                color: Color(0xFF16A34A),
-                width: 1.4,
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(
+          14,
+          18,
+          14,
+          MediaQuery.of(context).viewInsets.bottom + 14,
+        ),
+        child: Container(
+          decoration: BoxDecoration(
+            color: const Color(0xFFFFFCF7),
+            borderRadius: BorderRadius.circular(28),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x22000000),
+                blurRadius: 30,
+                offset: Offset(0, 16),
               ),
+            ],
+          ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        widget.title,
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: const Icon(Icons.close_rounded),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _searchController,
+                  autofocus: true,
+                  decoration: InputDecoration(
+                    hintText: widget.hintText,
+                    prefixIcon: const Icon(
+                      Icons.search_rounded,
+                      color: Color(0xFF16A34A),
+                    ),
+                    filled: true,
+                    fillColor: Colors.white,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(18),
+                      borderSide: const BorderSide(color: Color(0xFFD6E2D9)),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(18),
+                      borderSide: const BorderSide(color: Color(0xFFD6E2D9)),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(18),
+                      borderSide: const BorderSide(
+                        color: Color(0xFF16A34A),
+                        width: 1.4,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Flexible(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxHeight: 320),
+                    child: filtered.isEmpty
+                        ? const Center(
+                            child: Padding(
+                              padding: EdgeInsets.symmetric(vertical: 24),
+                              child: Text(
+                                'No matching options found.',
+                                style: TextStyle(color: Color(0xFF667085)),
+                              ),
+                            ),
+                          )
+                        : ListView.separated(
+                            shrinkWrap: true,
+                            itemCount: filtered.length,
+                            separatorBuilder: (context, index) =>
+                                const Divider(height: 1),
+                            itemBuilder: (context, index) {
+                              final option = filtered[index];
+                              return ListTile(
+                                dense: true,
+                                title: Text(option),
+                                onTap: () => Navigator.of(context).pop(option),
+                              );
+                            },
+                          ),
+                  ),
+                ),
+              ],
             ),
           ),
         ),
-        if (showSuggestions) ...[
-          const SizedBox(height: 10),
-          Material(
-            elevation: 6,
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(18),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxHeight: 220),
-              child: ListView.separated(
-                shrinkWrap: true,
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                itemCount: filtered.length,
-                separatorBuilder: (context, index) => const Divider(height: 1),
-                itemBuilder: (context, index) {
-                  final option = filtered[index];
-                  return ListTile(
-                    dense: true,
-                    title: Text(option),
-                    onTap: () {
-                      widget.controller.text = option;
-                      _focusNode.unfocus();
-                    },
-                  );
-                },
-              ),
-            ),
-          ),
-        ],
-      ],
+      ),
     );
   }
 }
