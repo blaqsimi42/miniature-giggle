@@ -1014,21 +1014,18 @@ class _DiscoverDrawer extends StatelessWidget {
                   const SizedBox(height: 12),
                   // Compact action grid — all items visible at a glance
                   Builder(builder: (ctx) {
-                    final smallStyle = const TextStyle(fontSize: 13, fontWeight: FontWeight.w600);
-                    final subtitleStyle = const TextStyle(fontSize: 11, color: Color(0xFF6B7280));
+                    final smallStyle = const TextStyle(fontSize: 15, fontWeight: FontWeight.w700);
+                    final subtitleStyle = const TextStyle(fontSize: 12, color: Color(0xFF6B7280));
                     Widget actionItem(IconData icon, String label, VoidCallback? onTap, {Color? color}) {
                       return InkWell(
                         onTap: onTap,
                         borderRadius: BorderRadius.circular(10),
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: Colors.transparent,
-                          ),
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                           child: Row(
                             children: [
-                              Icon(icon, size: 18, color: color ?? kPrimaryGreen),
-                              const SizedBox(width: 10),
+                              Icon(icon, size: 20, color: color ?? kPrimaryGreen),
+                              const SizedBox(width: 12),
                               Flexible(child: Text(label, style: smallStyle, overflow: TextOverflow.ellipsis)),
                             ],
                           ),
@@ -1038,27 +1035,31 @@ class _DiscoverDrawer extends StatelessWidget {
 
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.max,
                       children: [
-                        // Primary actions
-                        Container(
-                          padding: const EdgeInsets.symmetric(vertical: 6),
+                        // Primary actions — occupy upper half
+                        Expanded(
+                          flex: 5,
                           child: Column(
+                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               actionItem(Icons.star_outline, 'Go Premium', () {
                                 Navigator.of(ctx).pushNamed('/premium');
                               }, color: const Color(0xFFFFB020)),
+                              actionItem(Icons.person_add_alt_1_outlined, 'Add guardian', () => Navigator.of(ctx).pushNamed('/add-guardian')),
                               actionItem(Icons.favorite, 'Who liked you', currentUserId == null ? null : () => _showInterestRequestsSheet(ctx, currentUserId)),
                               actionItem(Icons.bookmark, 'Saved profiles', currentUserId == null ? null : () => _showSavedProfilesSheet(ctx, currentUserId)),
-                              actionItem(Icons.person_add_alt_1_outlined, 'Add guardian', () => Navigator.of(ctx).pushNamed('/add-guardian')),
                             ],
                           ),
                         ),
                         const Divider(height: 1),
-                        const SizedBox(height: 8),
-                        // Secondary actions
-                        Container(
-                          padding: const EdgeInsets.symmetric(vertical: 6),
+                        // Secondary actions — occupy middle space
+                        Expanded(
+                          flex: 3,
                           child: Column(
+                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               actionItem(Icons.settings_outlined, 'Settings', () => Navigator.of(ctx).pushNamed('/settings')),
                               actionItem(Icons.help_outline, 'Help & Support', () => Navigator.of(ctx).pushNamed('/help')),
@@ -1067,29 +1068,31 @@ class _DiscoverDrawer extends StatelessWidget {
                           ),
                         ),
                         const Divider(height: 1),
-                        const SizedBox(height: 8),
-                        // Compact account row
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(email, style: smallStyle, maxLines: 1, overflow: TextOverflow.ellipsis),
-                                  const SizedBox(height: 4),
-                                  Text(phone, style: subtitleStyle, maxLines: 1, overflow: TextOverflow.ellipsis),
-                                ],
+                        // Compact account row at bottom
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(email, style: smallStyle, maxLines: 1, overflow: TextOverflow.ellipsis),
+                                    const SizedBox(height: 6),
+                                    Text(phone, style: subtitleStyle, maxLines: 1, overflow: TextOverflow.ellipsis),
+                                  ],
+                                ),
                               ),
-                            ),
-                            const SizedBox(width: 12),
-                            IconButton(
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-                              icon: const Icon(Icons.logout_rounded, color: Colors.redAccent),
-                              onPressed: onLogout,
-                              tooltip: 'Logout',
-                            ),
-                          ],
+                              const SizedBox(width: 12),
+                              IconButton(
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+                                icon: const Icon(Icons.logout_rounded, color: Colors.redAccent, size: 22),
+                                onPressed: onLogout,
+                                tooltip: 'Logout',
+                              ),
+                            ],
+                          ),
                         ),
                       ],
                     );
