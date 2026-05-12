@@ -225,7 +225,8 @@ class EditProfileBloc extends Bloc<EditProfileEvent, EditProfileState> {
           noticeMessage: null,
         ),
       );
-    } catch (e) {
+    } catch (e, st) {
+      if (kDebugMode) debugPrint('[EditProfileBloc] _onLoadProfile error: $e\n$st');
       emit(EditProfileError('Failed to load profile: $e'));
     }
   }
@@ -299,7 +300,8 @@ class EditProfileBloc extends Bloc<EditProfileEvent, EditProfileState> {
           hasChanges: false,
         ),
       );
-    } catch (e) {
+    } catch (e, st) {
+      if (kDebugMode) debugPrint('[EditProfileBloc] _onSaveProfile error: $e\n$st');
       emit(EditProfileError('Failed to save profile: $e'));
     }
   }
@@ -376,7 +378,8 @@ class EditProfileBloc extends Bloc<EditProfileEvent, EditProfileState> {
           noticeVersion: currentState.noticeVersion + 1,
         ),
       );
-    } catch (e) {
+    } catch (e, st) {
+      if (kDebugMode) debugPrint('[EditProfileBloc] _onUploadImage error: $e\n$st');
       final failedUploads = [...currentState.uploadingImages]..remove(event.imagePath);
       emit(
         currentState.copyWith(
@@ -434,7 +437,8 @@ class EditProfileBloc extends Bloc<EditProfileEvent, EditProfileState> {
 
       // Clean up on Cloudinary (stub - requires backend)
       await _storageService.deleteFileByUrl(event.imageUrl);
-    } catch (e) {
+    } catch (e, st) {
+      if (kDebugMode) debugPrint('[EditProfileBloc] _onRemoveImage error: $e\n$st');
       emit(EditProfileError('Failed to remove image: $e'));
     }
   }
@@ -446,26 +450,31 @@ class EditProfileBloc extends Bloc<EditProfileEvent, EditProfileState> {
     final currentState = state;
     if (currentState is! EditProfileLoaded || _currentProfile == null) return;
 
-    await _userService.updateUser(
-      _currentProfile!.uid,
-      {
-        'profilePictureUrl': event.imageUrl,
-        ...buildProfileCompletionSnapshot(
-          _currentProfile!.copyWith(profilePictureUrl: event.imageUrl),
-          updatedAt: Timestamp.now(),
+    try {
+      await _userService.updateUser(
+        _currentProfile!.uid,
+        {
+          'profilePictureUrl': event.imageUrl,
+          ...buildProfileCompletionSnapshot(
+            _currentProfile!.copyWith(profilePictureUrl: event.imageUrl),
+            updatedAt: Timestamp.now(),
+          ),
+        },
+      );
+
+      _currentProfile = _currentProfile!.copyWith(profilePictureUrl: event.imageUrl);
+
+      emit(
+        currentState.copyWith(
+          profile: _currentProfile!,
+          unsavedChanges: Map.from(_changes),
+          hasChanges: _changes.isNotEmpty,
         ),
-      },
-    );
-
-    _currentProfile = _currentProfile!.copyWith(profilePictureUrl: event.imageUrl);
-
-    emit(
-      currentState.copyWith(
-        profile: _currentProfile!,
-        unsavedChanges: Map.from(_changes),
-        hasChanges: _changes.isNotEmpty,
-      ),
-    );
+      );
+    } catch (e, st) {
+      if (kDebugMode) debugPrint('[EditProfileBloc] _onSetProfilePicture error: $e\n$st');
+      emit(EditProfileError('Failed to set profile picture: $e'));
+    }
   }
 
   Future<Uint8List?> _readImageBytes(String imagePath) async {

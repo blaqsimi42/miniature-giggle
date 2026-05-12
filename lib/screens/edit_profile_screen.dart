@@ -3,6 +3,8 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:image_picker/image_picker.dart';
 import '../services/otp_service.dart';
 import '../core/utils/validation_service.dart';
+import '../core/data/india_cities.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import '../widgets/app_notice.dart';
 import '../bloc/edit_profile_bloc.dart';
 import '../services/user_service.dart';
@@ -790,16 +792,26 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     final fullNameController = TextEditingController(text: state.profile.fullName);
     final emailController = TextEditingController(text: state.profile.email ?? '');
     final phoneController = TextEditingController(text: state.profile.phone ?? '');
-    final profileCreatedForController = TextEditingController(text: state.profile.profileCreatedFor ?? '');
+    // controller for the 'Other' relation text input
+    final othersRelationController = TextEditingController(text: state.profile.profileCreatedFor ?? '');
+    // selected relation for dropdown; pre-select a known relation or 'Others'
+    final relationOptions = ['Father', 'Mother', 'Brother', 'Sister', 'Others'];
+    String selectedRelation = relationOptions.contains(state.profile.profileCreatedFor)
+      ? state.profile.profileCreatedFor!
+      : (state.profile.profileCreatedFor?.trim().isEmpty == true ? relationOptions[0] : 'Others');
     final genderController = TextEditingController(text: state.profile.gender ?? '');
     final heightController = TextEditingController(
       text: state.profile.height == null
           ? ''
           : state.profile.height!.toStringAsFixed(state.profile.height! % 1 == 0 ? 0 : 1),
     );
-    final heightUnitController = TextEditingController(text: state.profile.heightUnit ?? 'ft');
+    final unitOptions = ['inch', 'cm', 'ft'];
+    String selectedHeightUnit = state.profile.heightUnit?.trim().isNotEmpty == true ? state.profile.heightUnit! : 'ft';
     final cityController = TextEditingController(text: state.profile.location?['city'] ?? '');
-    final countryController = TextEditingController(text: state.profile.location?['country'] ?? '');
+    // country is fixed to India for now; show flag beside it in the UI
+    String selectedCountry = (state.profile.location?['country']?.trim().isNotEmpty == true)
+      ? state.profile.location!['country']!.trim()
+      : 'India';
     final aboutMeController = TextEditingController(text: state.profile.aboutMe ?? '');
     DateTime? selectedDateOfBirth = state.profile.dateOfBirth;
     bool shouldSave = false;
@@ -821,7 +833,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (context) => StatefulBuilder(
-        builder: (context, setModalState) => SafeArea(
+        builder: (context, setModalState) { bool sendingOtp = false; return SafeArea(
           child: Padding(
             padding: EdgeInsets.only(
               left: 16,
@@ -873,6 +885,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   const SizedBox(height: 8),
                   // Show Verify button when entered phone differs from saved phone
                   // OR when a saved phone exists but is not yet verified.
+                  // Track local sending state so the button can show a loader.
                   Builder(builder: (_) {
                     final entered = phoneController.text.trim();
                     final normalized = ValidationService.normalizePhoneNumber(entered.startsWith('+') ? entered : entered) ?? '';
@@ -887,66 +900,102 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 8.0),
-                      child: ElevatedButton.icon(
-                        icon: const Icon(Icons.verified_user_outlined, size: 18),
-                        label: Text(savedUnverified ? 'Verify saved number' : 'Verify number'),
+                      child: ElevatedButton(
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFF16A34A),
                           foregroundColor: Colors.white,
-                          padding: const EdgeInsets.all(3),
+                          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                         ),
-                        onPressed: () async {
-                          final targetUid = state.profile.uid;
-                          if (phoneToVerify.trim().isEmpty) {
-                            WidgetsBinding.instance.addPostFrameCallback((_) {
-                              AppNotice.showError(context, 'Invalid phone');
-                            });
-                            return;
-                          }
+                        onPressed: sendingOtp
+                            ? null
+                            : () async {
+                                final targetUid = state.profile.uid;
+                                if (phoneToVerify.trim().isEmpty) {
+                                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                                    AppNotice.showError(context, 'Invalid phone');
+                                  });
+                                  return;
+                                }
 
-                          try {
-                            final resp = await OtpService.sendOtp(uid: targetUid, phone: phoneToVerify);
-                            if (resp['ok'] == true) {
-                              if (!mounted) return;
-                              WidgetsBinding.instance.addPostFrameCallback((_) {
-                                AppNotice.showSuccess(context, 'Verification code sent.');
-                                Navigator.of(context).pushNamed('/verify-phone-link', arguments: {
-                                  'phone': phoneToVerify,
-                                  'uid': targetUid,
-                                  'sentAt': DateTime.now().toIso8601String(),
-                                  'returnTo': '/edit-profile',
-                                  'returnArgs': {'userId': widget.userId},
-                                });
-                              });
-                            } else {
-                              if (!mounted) return;
-                              WidgetsBinding.instance.addPostFrameCallback((_) {
-                                AppNotice.showError(context, resp['error'] ?? resp['body'] ?? 'Failed to send verification code.');
-                              });
-                            }
-                          } catch (e) {
-                            if (!mounted) return;
-                            WidgetsBinding.instance.addPostFrameCallback((_) {
-                              AppNotice.showError(context, e, fallbackMessage: 'Failed to send verification code.');
-                            });
-                          }
-                        },
+                                setModalState(() => sendingOtp = true);
+                                try {
+                                  final resp = await OtpService.sendOtp(uid: targetUid, phone: phoneToVerify);
+                                  if (resp['ok'] == true) {
+                                    if (!mounted) return;
+                                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                                      AppNotice.showSuccess(context, 'Verification code sent.');
+                                      Navigator.of(context).pushNamed('/verify-phone-link', arguments: {
+                                        'phone': phoneToVerify,
+                                        'uid': targetUid,
+                                        'sentAt': DateTime.now().toIso8601String(),
+                                        'returnTo': '/edit-profile',
+                                        'returnArgs': {'userId': widget.userId},
+                                      });
+                                    });
+                                  } else {
+                                    if (!mounted) return;
+                                    setModalState(() => sendingOtp = false);
+                                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                                      AppNotice.showError(context, resp['error'] ?? resp['body'] ?? 'Failed to send verification code.');
+                                    });
+                                  }
+                                } catch (e) {
+                                  if (!mounted) return;
+                                  setModalState(() => sendingOtp = false);
+                                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                                    AppNotice.showError(context, e, fallbackMessage: 'Failed to send verification code.');
+                                  });
+                                }
+                              },
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.verified_user_outlined, size: 18),
+                            const SizedBox(width: 8),
+                            if (sendingOtp) ...[
+                              SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                            ],
+                            Text(sendingOtp ? 'Sending OTP' : (savedUnverified ? 'Verify saved number' : 'Verify number')),
+                          ],
+                        ),
                       ),
                     );
                   }),
                   const SizedBox(height: 12),
-                  CustomTextField(
-                    controller: profileCreatedForController,
-                    labelText: 'Profile Created For',
-                    icon: Icons.groups_2_outlined,
+                  // Relation dropdown: Father/Mother/Brother/Sister/Others
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 6.0),
+                    child: DropdownButtonFormField<String>(
+                      initialValue: relationOptions.contains(selectedRelation) ? selectedRelation : null,
+                      items: relationOptions
+                          .map((r) => DropdownMenuItem(value: r, child: Text(r)))
+                          .toList(),
+                      decoration: const InputDecoration(
+                        labelText: 'Profile created for',
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                      ),
+                      onChanged: (v) => setModalState(() => selectedRelation = v ?? ''),
+                    ),
                   ),
-                  const SizedBox(height: 12),
-                  CustomTextField(
-                    controller: genderController,
-                    labelText: 'Gender',
-                    icon: Icons.wc_outlined,
-                  ),
+                  if (selectedRelation == 'Others') ...[
+                    const SizedBox(height: 8),
+                    CustomTextField(
+                      controller: othersRelationController,
+                      labelText: 'Specify relation',
+                      icon: Icons.person_outline,
+                    ),
+                  ],
                   const SizedBox(height: 12),
                   ListTile(
                     contentPadding: EdgeInsets.zero,
@@ -984,25 +1033,136 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                       ),
                       const SizedBox(width: 12),
                       Expanded(
-                        child: CustomTextField(
-                          controller: heightUnitController,
-                          labelText: 'Height Unit',
-                          icon: Icons.straighten_outlined,
+                        child: DropdownButtonFormField<String>(
+                          initialValue: selectedHeightUnit,
+                          items: unitOptions.map((u) => DropdownMenuItem(value: u, child: Text(u))).toList(),
+                          decoration: const InputDecoration(
+                            labelText: 'Height Unit',
+                            border: OutlineInputBorder(),
+                            isDense: true,
+                            contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                          ),
+                          onChanged: (v) => setModalState(() => selectedHeightUnit = v ?? 'ft'),
                         ),
                       ),
                     ],
                   ),
                   const SizedBox(height: 12),
-                  CustomTextField(
-                    controller: cityController,
-                    labelText: 'City',
-                    icon: Icons.location_city_outlined,
+                  // City field: open searchable suggestions modal of Indian cities
+                  GestureDetector(
+                    onTap: () async {
+                      final picked = await showModalBottomSheet<String?>(
+                        context: context,
+                        isScrollControlled: true,
+                        builder: (ctx) {
+                            String query = '';
+                            return StatefulBuilder(builder: (ctx, setState) {
+                              final q = query.trim().toLowerCase();
+                              List<String> filtered;
+                              if (q.isEmpty) {
+                                filtered = List.from(kIndiaCities);
+                              } else {
+                                // Score and sort: startsWith -> contains -> fuzzy subsequence
+                                final scored = <Map<String, dynamic>>[];
+                                for (final c in kIndiaCities) {
+                                  final lc = c.toLowerCase();
+                                  int score;
+                                  if (lc.startsWith(q)) {
+                                    score = 0;
+                                  } else if (lc.contains(q)) {
+                                    score = 1;
+                                  } else {
+                                    // fuzzy subsequence match: all characters of query appear in order
+                                    int idx = -1;
+                                    var matched = true;
+                                    for (var ch in q.split('')) {
+                                      idx = lc.indexOf(ch, idx + 1);
+                                      if (idx == -1) {
+                                        matched = false;
+                                        break;
+                                      }
+                                    }
+                                    score = matched ? 2 : 3;
+                                  }
+                                  if (score < 3) {
+                                    scored.add({'city': c, 'score': score});
+                                  }
+                                }
+                                scored.sort((a, b) {
+                                  final s = (a['score'] as int).compareTo(b['score'] as int);
+                                  if (s != 0) return s;
+                                  return (a['city'] as String).compareTo(b['city'] as String);
+                                });
+                                filtered = scored.map((e) => e['city'] as String).toList();
+                              }
+                              return Padding(
+                              padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Padding(
+                                    padding: const EdgeInsets.all(12.0),
+                                    child: TextField(
+                                      autofocus: true,
+                                      decoration: const InputDecoration(
+                                        prefixIcon: Icon(Icons.search),
+                                        hintText: 'Search city',
+                                        border: OutlineInputBorder(),
+                                      ),
+                                      onChanged: (v) => setState(() => query = v),
+                                    ),
+                                  ),
+                                  SizedBox(
+                                    height: 360,
+                                    child: ListView.builder(
+                                      shrinkWrap: true,
+                                      itemCount: filtered.length,
+                                      itemBuilder: (context, idx) {
+                                        final city = filtered[idx];
+                                        return ListTile(
+                                          title: Text(city),
+                                          onTap: () => Navigator.of(context).pop(city),
+                                        );
+                                      },
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          });
+                        },
+                      );
+                      if (picked != null && mounted) {
+                        setModalState(() => cityController.text = picked);
+                      }
+                    },
+                    child: AbsorbPointer(
+                      child: CustomTextField(
+                        controller: cityController,
+                        labelText: 'City',
+                        icon: Icons.location_city_outlined,
+                      ),
+                    ),
                   ),
                   const SizedBox(height: 12),
-                  CustomTextField(
-                    controller: countryController,
-                    labelText: 'Country',
-                    icon: Icons.public_outlined,
+                  // Country: fixed to India with flag
+                  InputDecorator(
+                    decoration: const InputDecoration(
+                      labelText: 'Country',
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                    ),
+                    child: Row(
+                      children: [
+                        SvgPicture.asset(
+                          'assets/flags/india.svg',
+                          width: 28,
+                          height: 18,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(selectedCountry),
+                      ],
+                    ),
                   ),
                   const SizedBox(height: 12),
                   CustomTextField(
@@ -1028,25 +1188,23 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                             if (cityController.text.trim().isNotEmpty) {
                               location['city'] = cityController.text.trim();
                             }
-                            if (countryController.text.trim().isNotEmpty) {
-                              location['country'] = countryController.text.trim();
+                            if (selectedCountry.trim().isNotEmpty) {
+                              location['country'] = selectedCountry.trim();
                             }
 
                             shouldSave = true;
                             savedFullName = fullNameController.text.trim();
                             savedEmail = emailController.text.trim();
                             savedPhone = phoneController.text.trim();
-                            savedProfileCreatedFor =
-                                profileCreatedForController.text.trim();
+                            savedProfileCreatedFor = selectedRelation == 'Others'
+                              ? othersRelationController.text.trim()
+                              : selectedRelation;
                             savedGender = genderController.text.trim();
                             savedDateOfBirth = selectedDateOfBirth;
                             savedHeight = heightController.text.trim().isEmpty
-                                ? null
-                                : double.tryParse(heightController.text.trim());
-                            savedHeightUnit =
-                                heightUnitController.text.trim().isEmpty
-                                    ? null
-                                    : heightUnitController.text.trim();
+                              ? null
+                              : double.tryParse(heightController.text.trim());
+                            savedHeightUnit = selectedHeightUnit.trim().isEmpty ? null : selectedHeightUnit.trim();
                             savedLocation =
                                 location.isEmpty ? null : location;
                             savedAboutMe = aboutMeController.text.trim().isEmpty
@@ -1063,7 +1221,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               ),
             ),
           ),
-        ),
+        );
+        },
       ),
     );
 
@@ -1089,12 +1248,12 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     fullNameController.dispose();
     emailController.dispose();
     phoneController.dispose();
-    profileCreatedForController.dispose();
+    othersRelationController.dispose();
     genderController.dispose();
     heightController.dispose();
-    heightUnitController.dispose();
+    // heightUnitController removed; selectedHeightUnit is stored instead
     cityController.dispose();
-    countryController.dispose();
+    // countryController removed; country is fixed to India
     aboutMeController.dispose();
   }
 

@@ -122,6 +122,14 @@ class ValidationService {
     return null;
   }
 
+  // Format a height value with its unit. Returns null if height is null.
+  static String? formatHeight(double? height, String? unit) {
+    if (height == null) return null;
+    final normalized = height % 1 == 0 ? height.toStringAsFixed(0) : height.toStringAsFixed(1);
+    final u = (unit ?? '').trim();
+    return u.isEmpty ? normalized : '$normalized $u';
+  }
+
   // Image file validation
   static String? validateImageFile(String fileName, int fileSizeBytes,
       {int maxSizeMB = 10}) {

@@ -14,8 +14,14 @@ class _ImageCropperScreenState extends State<ImageCropperScreen> {
   final _controller = CropController();
   bool _processing = false;
 
-  void _onCropped(Uint8List cropped) {
-    Navigator.of(context).pop(cropped);
+  void _onCropped(CropResult result) {
+    // crop_your_image v2 returns a sealed CropResult; handle success/failure.
+    if (result is CropSuccess) {
+      Navigator.of(context).pop(result.croppedImage);
+      return;
+    }
+    // On failure, pop null and let caller handle it.
+    Navigator.of(context).pop(null);
   }
 
   @override

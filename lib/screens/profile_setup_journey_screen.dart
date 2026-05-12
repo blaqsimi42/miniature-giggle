@@ -12,6 +12,7 @@ import '../services/storage_service.dart';
 import '../services/user_service.dart';
 import '../utils/profile_completion.dart';
 import '../widgets/profile_completion_widgets.dart';
+import '../core/utils/currency_formatter.dart';
 
 const List<String> _kSectOptions = [
   'Sunni',
@@ -31,12 +32,12 @@ const List<String> _kPracticeOptions = [
   'Learning and improving',
   'Prefer not to say',
 ];
-const List<String> _kIncomeOptions = [
-  'Less than \$500k',
-  '\$500k-\$1m',
-  '\$1m-\$3m',
-  '\$3m-\$5m',
-  'Above \$5m',
+final List<String> _kIncomeOptions = [
+  'Less than ${CurrencyFormatter.format(500000)}',
+  '${CurrencyFormatter.format(500000)} - ${CurrencyFormatter.format(1000000)}',
+  '${CurrencyFormatter.format(1000000)} - ${CurrencyFormatter.format(3000000)}',
+  '${CurrencyFormatter.format(3000000)} - ${CurrencyFormatter.format(5000000)}',
+  'Above ${CurrencyFormatter.format(5000000)}',
   'Prefer not to say',
 ];
 const List<String> _kMaritalStatusOptions = [
@@ -89,8 +90,8 @@ class _ProfileSetupJourneyScreenState extends State<ProfileSetupJourneyScreen> {
   final _fatherOccupationController = TextEditingController();
   final _motherNameController = TextEditingController();
   final _motherOccupationController = TextEditingController();
-  final _sistersController = TextEditingController();
-  final _brothersController = TextEditingController();
+  final _disciplineController = TextEditingController();
+  final _collegeController = TextEditingController();
   final _aboutController = TextEditingController();
 
   UserModel? _profile;
@@ -110,6 +111,10 @@ class _ProfileSetupJourneyScreenState extends State<ProfileSetupJourneyScreen> {
   String? _preferredFamilyType;
   String? _profilePrivacy;
   bool _hidePhoto = false;
+  String? _caste;
+  String? _degree;
+  int? _sistersCount;
+  int? _brothersCount;
   List<String> _lookingFor = <String>[];
   List<String> _photos = <String>[];
   Map<String, String> _errors = <String, String>{};
@@ -126,8 +131,8 @@ class _ProfileSetupJourneyScreenState extends State<ProfileSetupJourneyScreen> {
     _fatherOccupationController.dispose();
     _motherNameController.dispose();
     _motherOccupationController.dispose();
-    _sistersController.dispose();
-    _brothersController.dispose();
+    _disciplineController.dispose();
+    _collegeController.dispose();
     _aboutController.dispose();
     super.dispose();
   }
@@ -152,7 +157,8 @@ class _ProfileSetupJourneyScreenState extends State<ProfileSetupJourneyScreen> {
     _gender = profile?.gender;
     _cityController.text = profile?.city ?? profile?.location?['city'] ?? '';
     _religion = profile?.religion?.trim().isNotEmpty == true ? profile!.religion : 'Islam';
-    _sect = profile?.sect ?? profile?.caste;
+    _sect = profile?.sect;
+    _caste = profile?.caste;
     _prayerLevel = profile?.prayerLevel;
     _religiousPracticeLevel = profile?.religiousPracticeLevel;
     _educationController.text = profile?.education ?? '';
@@ -164,8 +170,12 @@ class _ProfileSetupJourneyScreenState extends State<ProfileSetupJourneyScreen> {
     _fatherOccupationController.text = profile?.fatherOccupation ?? '';
     _motherNameController.text = profile?.motherName ?? '';
     _motherOccupationController.text = profile?.motherOccupation ?? '';
-    _sistersController.text = profile?.numberOfSisters?.toString() ?? '';
-    _brothersController.text = profile?.numberOfBrothers?.toString() ?? '';
+    _sistersCount = profile?.numberOfSisters;
+    _brothersCount = profile?.numberOfBrothers;
+    final profileMap = _profile?.toPublicMap();
+    _degree = profileMap != null ? (profileMap['degree'] as String?) : null;
+    _disciplineController.text = profileMap != null ? (profileMap['discipline'] as String? ?? '') : '';
+    _collegeController.text = profileMap != null ? (profileMap['college'] as String? ?? '') : '';
     _familyType = profile?.familyType;
     _aboutController.text = profile?.aboutMe ?? '';
     _lookingFor = [...?profile?.lookingFor];
@@ -294,10 +304,13 @@ class _ProfileSetupJourneyScreenState extends State<ProfileSetupJourneyScreen> {
             },
       'religion': _religion,
       'sect': _sect,
-      'caste': _sect,
+      'caste': _caste,
       'prayerLevel': _prayerLevel,
       'religiousPracticeLevel': _religiousPracticeLevel,
       'education': _educationController.text.trim(),
+      'degree': _degree,
+      'discipline': _disciplineController.text.trim(),
+      'college': _collegeController.text.trim(),
       'profession': _professionController.text.trim(),
       'occupation': _professionController.text.trim(),
       'annualIncome': _annualIncome,
@@ -308,8 +321,8 @@ class _ProfileSetupJourneyScreenState extends State<ProfileSetupJourneyScreen> {
       'fatherOccupation': _fatherOccupationController.text.trim(),
       'motherName': _motherNameController.text.trim(),
       'motherOccupation': _motherOccupationController.text.trim(),
-      'numberOfSisters': int.tryParse(_sistersController.text.trim()),
-      'numberOfBrothers': int.tryParse(_brothersController.text.trim()),
+      'numberOfSisters': _sistersCount,
+      'numberOfBrothers': _brothersCount,
       'familyType': _familyType,
       'preferredFamilyType': _preferredFamilyType,
       'aboutMe': _aboutController.text.trim(),
@@ -459,6 +472,16 @@ class _ProfileSetupJourneyScreenState extends State<ProfileSetupJourneyScreen> {
             ),
             const SizedBox(height: 14),
             ProfileSetupDropdown<String>(
+              label: 'Caste',
+              value: _caste,
+              errorText: _errors['caste'],
+              onChanged: (value) => setState(() => _caste = value),
+              items: ['Prefer not to say', 'Syed', 'Sheikh', 'Other']
+                  .map((value) => DropdownMenuItem(value: value, child: Text(value)))
+                  .toList(),
+            ),
+            const SizedBox(height: 14),
+            ProfileSetupDropdown<String>(
               label: 'Prayer level',
               value: _prayerLevel,
               errorText: _errors['prayerLevel'],
@@ -488,10 +511,42 @@ class _ProfileSetupJourneyScreenState extends State<ProfileSetupJourneyScreen> {
               errorText: _errors['education'],
             ),
             const SizedBox(height: 14),
+            Row(
+              children: [
+                Expanded(
+                  child: ProfileSetupDropdown<String>(
+                    label: 'Degree',
+                    value: _degree,
+                    onChanged: (v) => setState(() => _degree = v),
+                    items: const [
+                      'High School',
+                      'Diploma',
+                      'Bachelor\'s',
+                      'Master\'s',
+                      'PhD',
+                      'Other',
+                    ].map((d) => DropdownMenuItem(value: d, child: Text(d))).toList(),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ProfileSetupTextField(
+                    controller: _disciplineController,
+                    label: 'Discipline / Course',
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
             ProfileSetupTextField(
               controller: _professionController,
               label: 'Profession',
               errorText: _errors['profession'],
+            ),
+            const SizedBox(height: 14),
+            ProfileSetupTextField(
+              controller: _collegeController,
+              label: 'College / Institution',
             ),
             const SizedBox(height: 14),
             ProfileSetupDropdown<String>(
@@ -536,18 +591,24 @@ class _ProfileSetupJourneyScreenState extends State<ProfileSetupJourneyScreen> {
             Row(
               children: [
                 Expanded(
-                  child: ProfileSetupTextField(
-                    controller: _sistersController,
-                    label: 'Number of sisters',
-                    keyboardType: TextInputType.number,
+                  child: ProfileSetupDropdown<int>(
+                    label: 'No. of sisters',
+                    value: _sistersCount,
+                    onChanged: (v) => setState(() => _sistersCount = v),
+                    items: List.generate(100, (i) => i + 1)
+                        .map((n) => DropdownMenuItem(value: n, child: Text(n.toString())))
+                        .toList(),
                   ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: ProfileSetupTextField(
-                    controller: _brothersController,
-                    label: 'Number of brothers',
-                    keyboardType: TextInputType.number,
+                  child: ProfileSetupDropdown<int>(
+                    label: 'No. of brothers',
+                    value: _brothersCount,
+                    onChanged: (v) => setState(() => _brothersCount = v),
+                    items: List.generate(100, (i) => i + 1)
+                        .map((n) => DropdownMenuItem(value: n, child: Text(n.toString())))
+                        .toList(),
                   ),
                 ),
               ],

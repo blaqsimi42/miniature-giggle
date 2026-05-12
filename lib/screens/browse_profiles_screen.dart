@@ -18,6 +18,7 @@ import '../services/notification_service.dart';
 import '../services/profile_completion_gate_service.dart';
 import '../widgets/app_notice.dart';
 import '../widgets/primary_button.dart';
+import '../core/utils/validation_service.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 // 'dart:math' was previously used for stacked card transforms; no longer required.
 
@@ -296,9 +297,11 @@ class _BrowseProfilesScreenState extends State<BrowseProfilesScreen> {
                     Expanded(
                       child: LayoutBuilder(
                         builder: (context, constraints) {
-                          final stackHeight =
-                              constraints.maxHeight -
-                              (widget.showBottomNav ? 22 : 124);
+                            final bottomPadding = MediaQuery.of(context).viewPadding.bottom;
+                            final navBarExtra = bottomPadding > 0
+                              ? bottomPadding
+                              : (widget.showBottomNav ? 22.0 : 124.0);
+                            final stackHeight = constraints.maxHeight - navBarExtra;
                           if (visibleProfiles.isEmpty) {
                             return RefreshIndicator(
                               color: kPrimaryGreen,
@@ -623,7 +626,7 @@ class _BrowseProfilesScreenState extends State<BrowseProfilesScreen> {
   void _showFilterDialog() {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+        builder: (context) => AlertDialog(
         title: const Text('Filters'),
         content: SingleChildScrollView(
           child: Column(
@@ -638,7 +641,7 @@ class _BrowseProfilesScreenState extends State<BrowseProfilesScreen> {
                     .map((e) => DropdownMenuItem(value: e, child: Text(e)))
                     .toList(),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 18),
 
               // Religion filter
               DropdownButton<String>(
@@ -649,7 +652,7 @@ class _BrowseProfilesScreenState extends State<BrowseProfilesScreen> {
                     .map((e) => DropdownMenuItem(value: e, child: Text(e)))
                     .toList(),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 18),
 
               // Age range
               const Text('Age Range', style: TextStyle(fontWeight: FontWeight.bold)),
@@ -684,26 +687,35 @@ class _BrowseProfilesScreenState extends State<BrowseProfilesScreen> {
           ),
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: kPrimaryGreen,
-            ),
-            onPressed: () {
-              Navigator.pop(context);
-              _bloc.add(
-                LoadDiscoverProfiles(
-                  gender: _selectedGender,
-                  minAge: _minAge,
-                  maxAge: _maxAge,
-                  religion: _selectedReligion,
+          Padding(
+            padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewPadding.bottom + 8),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancel'),
                 ),
-              );
-            },
-            child: const Text('Apply', style: TextStyle(color: Colors.white)),
+                const SizedBox(width: 8),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: kPrimaryGreen,
+                  ),
+                  onPressed: () {
+                    Navigator.pop(context);
+                    _bloc.add(
+                      LoadDiscoverProfiles(
+                        gender: _selectedGender,
+                        minAge: _minAge,
+                        maxAge: _maxAge,
+                        religion: _selectedReligion,
+                      ),
+                    );
+                  },
+                  child: const Text('Apply', style: TextStyle(color: Colors.white)),
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -845,8 +857,10 @@ class _DiscoverDrawer extends StatelessWidget {
           ),
           child: Container(
             color: kBackgroundCream,
+            height: MediaQuery.of(context).size.height,
             child: SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
+              physics: const NeverScrollableScrollPhysics(),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -997,82 +1011,89 @@ class _DiscoverDrawer extends StatelessWidget {
                   ],
                 ),
                   ),
-                  const SizedBox(height: 16),
-                  _DiscoverDrawerSection(
-                    title: 'Quick Access',
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: _DiscoverDrawerLiveStatCard<int>(
-                            stream: currentUserId == null
-                                ? null
-                                : InteractionsService()
-                                    .getIncomingInterests(currentUserId)
-                                    .map((items) => items.length),
-                            initialData: 0,
-                            icon: Icons.favorite_outline_rounded,
-                            title: 'Interest Requests',
-                            accentColor: const Color(0xFFDB2777),
-                            onTap: currentUserId == null
-                                ? null
-                                : () => _showInterestRequestsSheet(
-                                      context,
-                                      currentUserId,
-                                    ),
+                  const SizedBox(height: 12),
+                  // Compact action grid — all items visible at a glance
+                  Builder(builder: (ctx) {
+                    final smallStyle = const TextStyle(fontSize: 13, fontWeight: FontWeight.w600);
+                    final subtitleStyle = const TextStyle(fontSize: 11, color: Color(0xFF6B7280));
+                    Widget actionItem(IconData icon, String label, VoidCallback? onTap, {Color? color}) {
+                      return InkWell(
+                        onTap: onTap,
+                        borderRadius: BorderRadius.circular(10),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: Colors.transparent,
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(icon, size: 18, color: color ?? kPrimaryGreen),
+                              const SizedBox(width: 10),
+                              Flexible(child: Text(label, style: smallStyle, overflow: TextOverflow.ellipsis)),
+                            ],
                           ),
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: _DiscoverDrawerLiveStatCard<int>(
-                            stream: currentUserId == null
-                                ? null
-                                : InteractionsService()
-                                    .getShortlistedProfiles(currentUserId)
-                                    .map((items) => items.length),
-                            initialData: 0,
-                            icon: Icons.bookmark_outline_rounded,
-                            title: 'Saved Profiles',
-                            accentColor: kPrimaryGreen,
-                            onTap: currentUserId == null
-                                ? null
-                                : () => _showSavedProfilesSheet(
-                                      context,
-                                      currentUserId,
-                                    ),
+                      );
+                    }
+
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Primary actions
+                        Container(
+                          padding: const EdgeInsets.symmetric(vertical: 6),
+                          child: Column(
+                            children: [
+                              actionItem(Icons.star_outline, 'Go Premium', () {
+                                Navigator.of(ctx).pushNamed('/premium');
+                              }, color: const Color(0xFFFFB020)),
+                              actionItem(Icons.favorite, 'Who liked you', currentUserId == null ? null : () => _showInterestRequestsSheet(ctx, currentUserId)),
+                              actionItem(Icons.bookmark, 'Saved profiles', currentUserId == null ? null : () => _showSavedProfilesSheet(ctx, currentUserId)),
+                              actionItem(Icons.person_add_alt_1_outlined, 'Add guardian', () => Navigator.of(ctx).pushNamed('/add-guardian')),
+                            ],
                           ),
                         ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  _DiscoverDrawerSection(
-                    title: 'Account',
-                    child: Column(
-                      children: [
-                        _DiscoverDrawerInfoTile(
-                          icon: Icons.mail_outline,
-                          title: 'Gmail',
-                          subtitle: email,
-                          onTap: onCopyEmail,
+                        const Divider(height: 1),
+                        const SizedBox(height: 8),
+                        // Secondary actions
+                        Container(
+                          padding: const EdgeInsets.symmetric(vertical: 6),
+                          child: Column(
+                            children: [
+                              actionItem(Icons.settings_outlined, 'Settings', () => Navigator.of(ctx).pushNamed('/settings')),
+                              actionItem(Icons.help_outline, 'Help & Support', () => Navigator.of(ctx).pushNamed('/help')),
+                              actionItem(Icons.share_outlined, 'Invite friends', () => Navigator.of(ctx).pushNamed('/invite')),
+                            ],
+                          ),
                         ),
                         const Divider(height: 1),
-                        _DiscoverDrawerInfoTile(
-                          icon: Icons.phone_outlined,
-                          title: 'Number',
-                          subtitle: phone,
-                          onTap: onCopyPhone,
-                        ),
-                        const Divider(height: 1),
-                        _DiscoverDrawerInfoTile(
-                          icon: Icons.logout_rounded,
-                          iconColor: Colors.redAccent,
-                          title: 'Logout',
-                          subtitle: 'Sign out of your account',
-                          onTap: onLogout,
+                        const SizedBox(height: 8),
+                        // Compact account row
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(email, style: smallStyle, maxLines: 1, overflow: TextOverflow.ellipsis),
+                                  const SizedBox(height: 4),
+                                  Text(phone, style: subtitleStyle, maxLines: 1, overflow: TextOverflow.ellipsis),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            IconButton(
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                              icon: const Icon(Icons.logout_rounded, color: Colors.redAccent),
+                              onPressed: onLogout,
+                              tooltip: 'Logout',
+                            ),
+                          ],
                         ),
                       ],
-                    ),
-                  ),
+                    );
+                  }),
                 ],
               ),
             ),
@@ -1262,104 +1283,8 @@ class _DiscoverDrawer extends StatelessWidget {
   }
 }
 
-class _DiscoverDrawerSection extends StatelessWidget {
-  final String title;
-  final Widget child;
 
-  const _DiscoverDrawerSection({
-    required this.title,
-    required this.child,
-  });
 
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x11000000),
-            blurRadius: 16,
-            offset: Offset(0, 6),
-          ),
-        ],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    title,
-                    style: const TextStyle(
-                      color: Color(0xFF171717),
-                      fontSize: 16,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            child,
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _DiscoverDrawerInfoTile extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final VoidCallback? onTap;
-  final Color? iconColor;
-
-  const _DiscoverDrawerInfoTile({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    this.onTap,
-    this.iconColor,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      leading: Container(
-        width: 42,
-        height: 42,
-        decoration: BoxDecoration(
-          color: const Color(0xFFF2F6F3),
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: Icon(
-          icon,
-          color: iconColor ?? kDeepGreen,
-          size: 20,
-        ),
-      ),
-      title: Text(
-        title,
-        style: const TextStyle(fontWeight: FontWeight.w700),
-      ),
-      subtitle: Text(
-        subtitle,
-        style: const TextStyle(height: 1.35),
-      ),
-      trailing: onTap == null
-          ? null
-          : const Icon(Icons.chevron_right_rounded, color: Color(0xFF94A3B8)),
-      onTap: onTap,
-    );
-  }
-}
 
 class _DiscoverDrawerSheet extends StatelessWidget {
   final String title;
@@ -1649,102 +1574,7 @@ class _DiscoverDrawerHeroStat extends StatelessWidget {
   }
 }
 
-class _DiscoverDrawerLiveStatCard<T> extends StatelessWidget {
-  final Stream<T>? stream;
-  final T initialData;
-  final IconData icon;
-  final String title;
-  final Color accentColor;
-  final VoidCallback? onTap;
 
-  const _DiscoverDrawerLiveStatCard({
-    required this.stream,
-    required this.initialData,
-    required this.icon,
-    required this.title,
-    required this.accentColor,
-    this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return StreamBuilder<T>(
-      stream: stream,
-      initialData: initialData,
-      builder: (context, snapshot) {
-        final value = snapshot.data;
-        return Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: onTap,
-            borderRadius: BorderRadius.circular(22),
-              child: Ink(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF7FAF8),
-                  borderRadius: BorderRadius.circular(22),
-                  border: Border.all(color: const Color(0xFFE5ECE7)),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          width: 40,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            color: accentColor.withValues(alpha: 0.10),
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                          child: Icon(icon, color: accentColor, size: 20),
-                        ),
-                        const SizedBox(width: 10),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 5,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(999),
-                            border: Border.all(
-                              color: const Color(0xFFE8EEE9),
-                            ),
-                          ),
-                          child: Text(
-                            value == null ? '0' : '$value',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: accentColor,
-                              fontSize: 16,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    Text(
-                      title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Color(0xFF475467),
-                        height: 1.35,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-          ),
-        );
-      },
-    );
-  }
-}
 
 class _EmptyProfilesState extends StatelessWidget {
   final String label;
@@ -1960,7 +1790,7 @@ class _ProfileCardLargeState extends State<_ProfileCardLarge> {
       if (age != null) '$age yrs',
       if (location.isNotEmpty) location,
     ].join('  •  ');
-    final heightLabel = _formatHeight(profile);
+    final heightLabel = ValidationService.formatHeight(profile.height, profile.heightUnit);
     final identityPills = <Widget>[
       if (heightLabel != null)
         _DiscoverDetailPill(
@@ -2441,16 +2271,7 @@ String _formatDiscoverLocation(Map<String, String>? location) {
   return parts.join(', ');
 }
 
-String? _formatHeight(UserModel profile) {
-  final height = profile.height;
-  if (height == null) {
-    return null;
-  }
-  final unit = (profile.heightUnit ?? '').trim();
-  final normalized =
-      height % 1 == 0 ? height.toStringAsFixed(0) : height.toStringAsFixed(1);
-  return unit.isEmpty ? normalized : '$normalized $unit';
-}
+
 
 class _DiscoverBottomNavBar extends StatelessWidget {
   final int currentIndex;

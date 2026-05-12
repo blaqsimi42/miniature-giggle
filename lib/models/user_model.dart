@@ -34,6 +34,9 @@ class UserModel {
   final Map<String, String>? location;
   final String? city;
   final String? education;
+  final String? degree;
+  final String? discipline;
+  final String? college;
   final String? profession;
   final String? occupation;
   final String? annualIncome;
@@ -87,6 +90,9 @@ class UserModel {
     this.location,
     this.city,
     this.education,
+    this.degree,
+    this.discipline,
+    this.college,
     this.profession,
     this.occupation,
     this.annualIncome,
@@ -152,6 +158,9 @@ class UserModel {
           : null,
       city: merged['city'] as String? ?? (merged['location'] is Map ? (merged['location']['city'] as String?) : null),
       education: merged['education'] as String? ?? '',
+      degree: merged['degree'] as String?,
+      discipline: merged['discipline'] as String?,
+      college: merged['college'] as String?,
       profession: merged['profession'] as String? ?? merged['occupation'] as String?,
       occupation: merged['occupation'] as String? ?? '',
       annualIncome: merged['annualIncome'] as String? ?? merged['income'] as String?,
@@ -224,6 +233,9 @@ class UserModel {
       'location': location,
       'city': city ?? location?['city'],
       'education': education,
+      'degree': degree,
+      'discipline': discipline,
+      'college': college,
       'profession': profession ?? occupation,
       'occupation': occupation,
       'annualIncome': annualIncome ?? income,

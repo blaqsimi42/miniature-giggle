@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../widgets/upgrade_flow.dart';
+import '../core/utils/currency_formatter.dart';
 
 class PaymentScreen extends StatefulWidget {
   final int amount;
@@ -251,7 +252,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                         const SizedBox(height: 10),
                         _SummaryRow(
                           label: 'Total',
-                          value: _formatAmount(_selectedPlan.amount),
+                          value: CurrencyFormatter.format(_selectedPlan.amount),
                           emphasize: true,
                         ),
                       ],
@@ -337,18 +338,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
     }
   }
 
-  static String _formatAmount(int amount) {
-    final formatted = amount.toString();
-    final chars = formatted.split('').reversed.toList();
-    final buffer = StringBuffer();
-    for (var i = 0; i < chars.length; i++) {
-      if (i > 0 && i % 3 == 0) {
-        buffer.write(',');
-      }
-      buffer.write(chars[i]);
-    }
-    return '\$${buffer.toString().split('').reversed.join()}';
-  }
+  static String _formatAmount(int amount) => CurrencyFormatter.format(amount);
 }
 
 class _PlanOption {

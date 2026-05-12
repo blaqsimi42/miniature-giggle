@@ -5,6 +5,8 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_stripe/flutter_stripe.dart';
 
+import '../core/utils/currency_formatter.dart';
+
 import '../core/config/service_locator.dart';
 import '../services/auth_service.dart';
 import '../services/mock_payment_service.dart';
@@ -780,7 +782,7 @@ class _PlanCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Text(
-                '\$$amount',
+                CurrencyFormatter.format(amount),
                 style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800),
               ),
               Text(
@@ -811,11 +813,11 @@ class _ReviewTotals extends StatelessWidget {
       ),
       child: Column(
         children: [
-          _SummaryRow(label: 'Amount', value: '\$$amount'),
+          _SummaryRow(label: 'Amount', value: CurrencyFormatter.format(amount)),
           const SizedBox(height: 12),
-          const _SummaryRow(label: 'Taxes', value: '\$0'),
+          _SummaryRow(label: 'Taxes', value: CurrencyFormatter.format(0)),
           const SizedBox(height: 14),
-          _SummaryRow(label: 'Total', value: '\$$amount', emphasize: true),
+          _SummaryRow(label: 'Total', value: CurrencyFormatter.format(amount), emphasize: true),
         ],
       ),
     );

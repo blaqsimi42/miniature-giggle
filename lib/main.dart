@@ -52,6 +52,18 @@ Future<void> main() async {
     try {
       await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
       if (kDebugMode) debugPrint('[DEBUG] Firebase.initializeApp succeeded. Apps: ${Firebase.apps.map((a) => a.name).toList()}');
+      // Web-specific mitigation: disable IndexedDB persistence to avoid
+      // occasional Firebase JS SDK INTERNAL ASSERTION errors observed in
+      // firebase-firestore-pipelines.js when using persistence/watch APIs.
+      if (kIsWeb) {
+        try {
+          await FirebaseFirestore.instance.clearPersistence();
+          FirebaseFirestore.instance.settings = const Settings(persistenceEnabled: false);
+          if (kDebugMode) debugPrint('[DEBUG] Disabled Firestore persistence on web to mitigate JS SDK internal assertion.');
+        } catch (e) {
+          if (kDebugMode) debugPrint('[WARN] Could not disable Firestore persistence on web: $e');
+        }
+      }
       try {
         final u = FirebaseAuth.instance.currentUser;
         if (kDebugMode) debugPrint('[DEBUG] FirebaseAuth.currentUser: $u');
@@ -336,11 +348,13 @@ class _NetworkStatusToastHostState extends State<_NetworkStatusToastHost> {
     NetworkStatus? previousStatus,
     bool initial = false,
   }) {
+    // Use a context that is guaranteed to be below the app's Navigator/Overlay.
+    final hostContext = MyApp.scaffoldKey.currentContext ?? MyApp.navKey.currentContext ?? context;
     switch (status) {
       case NetworkStatus.offline:
         MyApp.scaffoldKey.currentState?.hideCurrentSnackBar();
         AppNotice.showError(
-          context,
+          hostContext,
           'No internet connection.',
           fallbackMessage: 'No internet connection.',
         );
@@ -348,7 +362,7 @@ class _NetworkStatusToastHostState extends State<_NetworkStatusToastHost> {
       case NetworkStatus.slow:
         MyApp.scaffoldKey.currentState?.hideCurrentSnackBar();
         AppNotice.showError(
-          context,
+          hostContext,
           'Bad network connection.',
           fallbackMessage: 'Bad network connection.',
         );
@@ -358,7 +372,7 @@ class _NetworkStatusToastHostState extends State<_NetworkStatusToastHost> {
             previousStatus != null &&
             previousStatus != NetworkStatus.online) {
           MyApp.scaffoldKey.currentState?.hideCurrentSnackBar();
-          AppNotice.showSuccess(context, 'Back online');
+          AppNotice.showSuccess(hostContext, 'Back online');
         }
         break;
     }

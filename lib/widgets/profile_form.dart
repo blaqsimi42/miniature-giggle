@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
+import '../core/data/india_cities.dart';
 
 
 class ProfileForm extends StatelessWidget {
@@ -121,9 +123,104 @@ class ProfileForm extends StatelessWidget {
               Wrap(spacing: 8, runSpacing: 8, children: hobbies.map((h) => InputChip(label: Text(h), onDeleted: () => onRemoveHobby(h))).toList())
             ]),
             const SizedBox(height: 12),
-            TextFormField(controller: cityController, decoration: const InputDecoration(labelText: 'City', prefixIcon: Icon(Icons.location_city))),
+            GestureDetector(
+              onTap: () async {
+                final picked = await showModalBottomSheet<String?>(
+                  context: context,
+                  isScrollControlled: true,
+                  builder: (ctx) {
+                    String query = '';
+                    return StatefulBuilder(builder: (ctx, setState) {
+                      final q = query.trim().toLowerCase();
+                      List<String> filtered;
+                      if (q.isEmpty) {
+                        filtered = List.from(kIndiaCities);
+                      } else {
+                        final scored = <Map<String, dynamic>>[];
+                        for (final c in kIndiaCities) {
+                          final lc = c.toLowerCase();
+                          int score;
+                          if (lc.startsWith(q)) {
+                            score = 0;
+                          } else if (lc.contains(q)) {
+                            score = 1;
+                          } else {
+                            int idx = -1;
+                            var matched = true;
+                            for (var ch in q.split('')) {
+                              idx = lc.indexOf(ch, idx + 1);
+                              if (idx == -1) {
+                                matched = false;
+                                break;
+                              }
+                            }
+                            score = matched ? 2 : 3;
+                          }
+                          if (score < 3) scored.add({'city': c, 'score': score});
+                        }
+                        scored.sort((a, b) {
+                          final s = (a['score'] as int).compareTo(b['score'] as int);
+                          if (s != 0) return s;
+                          return (a['city'] as String).compareTo(b['city'] as String);
+                        });
+                        filtered = scored.map((e) => e['city'] as String).toList();
+                      }
+                      return Padding(
+                        padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.all(12.0),
+                              child: TextField(
+                                autofocus: true,
+                                decoration: const InputDecoration(
+                                  prefixIcon: Icon(Icons.search),
+                                  hintText: 'Search city',
+                                  border: OutlineInputBorder(),
+                                ),
+                                onChanged: (v) => setState(() => query = v),
+                              ),
+                            ),
+                            SizedBox(
+                              height: 360,
+                              child: ListView.builder(
+                                shrinkWrap: true,
+                                itemCount: filtered.length,
+                                itemBuilder: (context, idx) {
+                                  final city = filtered[idx];
+                                  return ListTile(
+                                    title: Text(city),
+                                    onTap: () => Navigator.of(context).pop(city),
+                                  );
+                                },
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    });
+                  },
+                );
+                if (picked != null) {
+                  cityController.text = picked;
+                }
+              },
+              child: AbsorbPointer(
+                child: TextFormField(controller: cityController, decoration: const InputDecoration(labelText: 'City', prefixIcon: Icon(Icons.location_city))),
+              ),
+            ),
             const SizedBox(height: 12),
-            TextFormField(controller: countryController, decoration: const InputDecoration(labelText: 'Country', prefixIcon: Icon(Icons.public))),
+            InputDecorator(
+              decoration: const InputDecoration(labelText: 'Country', prefixIcon: Icon(Icons.public)),
+              child: Row(
+                children: [
+                  SvgPicture.asset('assets/flags/india.svg', width: 28, height: 18),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text(countryController.text)),
+                ],
+              ),
+            ),
             const SizedBox(height: 12),
             TextFormField(controller: aboutMeController, maxLines: 4, decoration: const InputDecoration(labelText: 'About me', prefixIcon: Icon(Icons.edit_note))),
             const SizedBox(height: 20),

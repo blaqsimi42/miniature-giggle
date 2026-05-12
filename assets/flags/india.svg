@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="480" height="320" viewBox="0 0 480 320">
+  <rect width="480" height="320" fill="#FF9933"/>
+  <rect y="106.666" width="480" height="106.666" fill="#FFFFFF"/>
+  <rect y="213.333" width="480" height="106.666" fill="#138808"/>
+  <!-- Simple Ashoka wheel approximation -->
+  <g transform="translate(240,160)">
+    <circle r="30" fill="#000080" />
+    <circle r="26" fill="#FFFFFF" />
+    <circle r="18" fill="#000080" />
+    <!-- spokes -->
+    <g stroke="#FFFFFF" stroke-width="2">
+      <line x1="0" y1="-18" x2="0" y2="18" />
+      <line x1="-18" y1="0" x2="18" y2="0" />
+      <line x1="-12.7" y1="-12.7" x2="12.7" y2="12.7" />
+      <line x1="-12.7" y1="12.7" x2="12.7" y2="-12.7" />
+    </g>
+  </g>
+</svg>

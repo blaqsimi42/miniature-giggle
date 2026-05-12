@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 import '../models/user_model.dart';
 import '../services/auth_service.dart';
@@ -8,6 +9,8 @@ import '../services/profile_completion_gate_service.dart';
 import '../services/user_service.dart';
 import '../widgets/app_notice.dart';
 import 'home_dashboard.dart';
+import '../core/utils/validation_service.dart';
+import '../core/utils/currency_formatter.dart';
 
 class ProfileViewScreen extends StatefulWidget {
   final String userId;
@@ -305,7 +308,7 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
                               label: 'Height',
                               value: profile.height == null
                                   ? 'Not shared'
-                                  : '${profile.height!.toStringAsFixed(profile.height! % 1 == 0 ? 0 : 1)} ${profile.heightUnit ?? 'ft'}',
+                                  : ValidationService.formatHeight(profile.height, profile.heightUnit)!,
                             ),
                             _HighlightData(
                               icon: profile.isOnline ? Icons.circle : Icons.schedule,
@@ -340,8 +343,62 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
                               _InfoChip(label: 'Caste', value: _valueOrFallback(profile.caste)),
                               _InfoChip(label: 'Education', value: _valueOrFallback(profile.education)),
                               _InfoChip(label: 'Occupation', value: _valueOrFallback(profile.occupation)),
-                              _InfoChip(label: 'Income', value: _valueOrFallback(profile.income)),
-                              _InfoChip(label: 'Location', value: location.isEmpty ? 'Not shared' : location),
+                              _InfoChip(
+                                label: 'Income',
+                                value: profile.income == null || profile.income!.trim().isEmpty
+                                    ? _valueOrFallback(profile.income)
+                                    : CurrencyFormatter.format(profile.income),
+                              ),
+                              Builder(builder: (ctx) {
+                                if (location.isEmpty) {
+                                  return _InfoChip(label: 'Location', value: 'Not shared');
+                                }
+                                // split location into city and country if present
+                                final parts = location.split(',').map((s) => s.trim()).toList();
+                                final countryPart = parts.length > 1 ? parts.sublist(1).join(', ') : '';
+                                return Container(
+                                  constraints: const BoxConstraints(minWidth: 140),
+                                  padding: const EdgeInsets.all(14),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFFAF8F4),
+                                    borderRadius: BorderRadius.circular(18),
+                                    border: Border.all(color: const Color(0xFFE7E0D5)),
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Text(
+                                        'Location',
+                                        style: TextStyle(
+                                          color: Color(0xFF6B7280),
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Row(
+                                        children: [
+                                          if (countryPart.toLowerCase() == 'india') ...[
+                                            SvgPicture.asset('assets/flags/india.svg', width: 20, height: 14),
+                                            const SizedBox(width: 8),
+                                          ],
+                                          Expanded(
+                                            child: Text(
+                                              location,
+                                              style: const TextStyle(
+                                                color: Color(0xFF111827),
+                                                fontSize: 14,
+                                                fontWeight: FontWeight.w700,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              }),
                             ],
                           ),
                         ),

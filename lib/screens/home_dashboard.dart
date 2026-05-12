@@ -27,6 +27,8 @@ import '../widgets/profile_form.dart';
 import '../widgets/app_notice.dart';
 import '../widgets/chat_options_sheet.dart';
 import '../widgets/image_cropper_screen.dart';
+import '../core/utils/validation_service.dart';
+import '../core/utils/currency_formatter.dart';
 
 // --- ARCHITECTURE: AppBreakpoints ---
 class AppBreakpoints {
@@ -492,7 +494,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
               mainAxisSpacing: 12,
               childAspectRatio: 2.8,
               physics: const NeverScrollableScrollPhysics(),
-              children: const [
+              children: [
                 StatCard(
                   title: 'Total Users',
                   value: '12,430',
@@ -508,7 +510,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
                 ),
                 StatCard(
                   title: 'Revenue',
-                  value: '\$23,400',
+                  value: CurrencyFormatter.format(23400),
                   accent: Colors.indigo,
                   icon: Icons.attach_money,
                 ),
@@ -1711,10 +1713,12 @@ class _MatchesFilterSheetState extends State<_MatchesFilterSheet> {
   @override
   Widget build(BuildContext context) {
     final rawKeyboardInset = MediaQuery.of(context).viewInsets.bottom;
+    final viewPaddingBottom = MediaQuery.of(context).viewPadding.bottom;
     final bottomInset = rawKeyboardInset < 0 ? 0.0 : rawKeyboardInset;
+    final effectiveBottom = bottomInset > viewPaddingBottom ? bottomInset : viewPaddingBottom;
     return SafeArea(
       child: Padding(
-        padding: EdgeInsets.fromLTRB(12, 24, 12, bottomInset + 12),
+        padding: EdgeInsets.fromLTRB(12, 24, 12, effectiveBottom + 12),
         child: Container(
           decoration: BoxDecoration(
             color: const Color(0xFFFFFCF7),
@@ -1774,7 +1778,7 @@ class _MatchesFilterSheetState extends State<_MatchesFilterSheet> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 14),
+                const SizedBox(height: 18),
                 Row(
                   children: [
                     Expanded(
@@ -1798,7 +1802,7 @@ class _MatchesFilterSheetState extends State<_MatchesFilterSheet> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 14),
+                const SizedBox(height: 18),
                 _MatchesFilterField(
                   controller: _occupationController,
                   label: 'Occupation',
@@ -1856,37 +1860,40 @@ class _MatchesFilterSheetState extends State<_MatchesFilterSheet> {
                   ),
                 ],
                 const SizedBox(height: 22),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: _reset,
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          side: const BorderSide(color: _kChatBorder),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(18),
+                Padding(
+                  padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewPadding.bottom + 8),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: _reset,
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            side: const BorderSide(color: _kChatBorder),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(18),
+                            ),
                           ),
+                          child: const Text('Reset'),
                         ),
-                        child: const Text('Reset'),
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: FilledButton(
-                        onPressed: _apply,
-                        style: FilledButton.styleFrom(
-                          backgroundColor: _kChatGreen,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(18),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: FilledButton(
+                          onPressed: _apply,
+                          style: FilledButton.styleFrom(
+                            backgroundColor: _kChatGreen,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(18),
+                            ),
                           ),
+                          child: const Text('Apply filters'),
                         ),
-                        child: const Text('Apply filters'),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ],
             ),
@@ -4124,9 +4131,7 @@ class _CurrentUserProfileScreenState extends State<_CurrentUserProfileScreen> {
         : MaterialLocalizations.of(
             context,
           ).formatMediumDate(_selectedDateOfBirth!);
-    final heightLabel = profile?.height == null
-        ? null
-        : '${profile!.height!.toStringAsFixed(profile.height! % 1 == 0 ? 0 : 1)} ${profile.heightUnit ?? 'ft'}';
+    final heightLabel = ValidationService.formatHeight(profile?.height, profile?.heightUnit);
     final hobbies = _hobbies;
 
     if (isLoading) {
@@ -4665,9 +4670,7 @@ class _VisitorListState extends State<VisitorList> {
         final previewList = (isPremium ? users.take(5) : users.take(3)).toList();
         final listWidget = Column(
           children: previewList.map((user) {
-            final heightLabel = user.height == null
-                ? null
-                : '${user.height!.toStringAsFixed(user.height! % 1 == 0 ? 0 : 1)} ${user.heightUnit ?? 'ft'}';
+            final heightLabel = ValidationService.formatHeight(user.height, user.heightUnit);
             final subtitleParts = <String>[
               if (user.location?['city']?.isNotEmpty == true)
                 user.location!['city']!,
@@ -4784,9 +4787,7 @@ class _RefinedUserProfileDetailsScreen extends StatelessWidget {
       if (user.location?['country']?.trim().isNotEmpty == true) user.location!['country']!.trim(),
     ];
     final location = locationParts.join(', ');
-    final heightLabel = user.height == null
-        ? null
-        : '${user.height!.toStringAsFixed(user.height! % 1 == 0 ? 0 : 1)} ${user.heightUnit ?? 'ft'}';
+    final heightLabel = ValidationService.formatHeight(user.height, user.heightUnit);
     final hobbies = user.hobbies ?? const <String>[];
     final topInset = MediaQuery.of(context).padding.top;
     final heroHeight = MediaQuery.of(context).size.height * 0.56;
