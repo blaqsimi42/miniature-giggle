@@ -1290,18 +1290,42 @@ app.post('/matches', async (req, res) => {
       return R * c;
     };
 
+    const calculateAgeFromDob = (dobValue) => {
+      if (!dobValue) return null;
+      let dob = null;
+      try {
+        if (typeof dobValue.toDate === 'function') {
+          dob = dobValue.toDate();
+        } else {
+          dob = new Date(dobValue);
+        }
+      } catch (e) {
+        dob = null;
+      }
+      if (!dob || Number.isNaN(dob.getTime())) return null;
+      const now = new Date();
+      let age = now.getFullYear() - dob.getFullYear();
+      const monthDiff = now.getMonth() - dob.getMonth();
+      const dayDiff = now.getDate() - dob.getDate();
+      if (monthDiff < 0 || (monthDiff === 0 && dayDiff < 0)) {
+        age -= 1;
+      }
+      return age;
+    };
+
     const requiredFields = ['fullName', 'age', 'bio', 'profilePictureUrl', 'location'];
 
     for (const d of docs) {
       if (d.id === callerUid) continue;
       const p = d.data() || {};
+      const ageValue = p.age != null ? Number(p.age) : calculateAgeFromDob(p.dateOfBirth);
 
       // Apply simple filters (exclude if mismatch)
-      if (minAge != null && (p.age == null || Number(p.age) < minAge)) continue;
-      if (maxAge != null && (p.age == null || Number(p.age) > maxAge)) continue;
+      if (minAge != null && (ageValue == null || ageValue < minAge)) continue;
+      if (maxAge != null && (ageValue == null || ageValue > maxAge)) continue;
       if (minHeight != null && (p.height == null || Number(p.height) < minHeight)) continue;
       if (maxHeight != null && (p.height == null || Number(p.height) > maxHeight)) continue;
-      if (religionFilter != null && String((p.religion || '')).toLowerCase() !== String(religionFilter).toLowerCase()) continue;
+      if (religionFilter != null && !String((p.religion || '')).toLowerCase().includes(String(religionFilter).toLowerCase())) continue;
       if (occupationFilter != null && !String((p.occupation || '')).toLowerCase().includes(String(occupationFilter).toLowerCase())) continue;
 
       const locationLabel = [
@@ -1344,10 +1368,10 @@ app.post('/matches', async (req, res) => {
       if (boostMs > Date.now()) score += 18;
 
       // Age closeness bonus if filter range provided
-      if (minAge != null && maxAge != null && p.age != null) {
+      if (minAge != null && maxAge != null && ageValue != null) {
         const mid = (minAge + maxAge) / 2;
         const halfRange = Math.max(1, (maxAge - minAge) / 2);
-        const dist = Math.abs(Number(p.age) - mid);
+        const dist = Math.abs(Number(ageValue) - mid);
         const ageBonus = Math.max(0, 10 * (1 - dist / halfRange));
         score += Math.round(ageBonus);
       }
@@ -1393,7 +1417,7 @@ app.post('/matches', async (req, res) => {
         uid: d.id,
         profile: {
           fullName: p.fullName || null,
-          age: p.age || null,
+          age: ageValue || null,
           religion: p.religion || null,
           occupation: p.occupation || null,
           height: p.height || null,

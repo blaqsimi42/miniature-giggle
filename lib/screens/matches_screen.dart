@@ -297,7 +297,7 @@ class _MatchesScreenState extends State<MatchesScreen> {
       final religionFilter =
           (_filters['religion'] as String?)?.trim().toLowerCase() ?? '';
       final religion = (profile['religion'] as String?)?.trim().toLowerCase() ?? '';
-      if (religionFilter.isNotEmpty && religion != religionFilter) {
+      if (religionFilter.isNotEmpty && !religion.contains(religionFilter)) {
         return false;
       }
 
