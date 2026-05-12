@@ -220,9 +220,15 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                                 SettingsTile(
                                   icon: Icons.school,
                                   title: 'Education & Career',
-                                  subtitle: profile.education?.trim().isNotEmpty == true
-                                      ? profile.education!
-                                      : 'Add your education and work',
+                                  subtitle: [
+                                    profile.degree?.trim(),
+                                    profile.discipline?.trim(),
+                                  ].where((value) => value != null && value.isNotEmpty).join(' • ').isNotEmpty
+                                      ? [
+                                          profile.degree?.trim(),
+                                          profile.discipline?.trim(),
+                                        ].where((value) => value != null && value.isNotEmpty).join(' • ')
+                                      : 'Add your degree, discipline, and work',
                                   onTap: () => _showEducationCareerModal(state),
                                 ),
                                 const Divider(height: 1),
@@ -789,13 +795,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   }
 
   Future<void> _showPersonalInformationModal(EditProfileLoaded state) async {
+    final parentContext = context;
     final fullNameController = TextEditingController(text: state.profile.fullName);
     final emailController = TextEditingController(text: state.profile.email ?? '');
     final phoneController = TextEditingController(text: state.profile.phone ?? '');
     // controller for the 'Other' relation text input
     final othersRelationController = TextEditingController(text: state.profile.profileCreatedFor ?? '');
     // selected relation for dropdown; pre-select a known relation or 'Others'
-    final relationOptions = ['Father', 'Mother', 'Brother', 'Sister', 'Others'];
+    final relationOptions = ['Self', 'Father', 'Mother', 'Brother', 'Sister', 'Others'];
     String selectedRelation = relationOptions.contains(state.profile.profileCreatedFor)
       ? state.profile.profileCreatedFor!
       : (state.profile.profileCreatedFor?.trim().isEmpty == true ? relationOptions[0] : 'Others');
@@ -912,9 +919,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                             : () async {
                                 final targetUid = state.profile.uid;
                                 if (phoneToVerify.trim().isEmpty) {
-                                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                                    AppNotice.showError(context, 'Invalid phone');
-                                  });
+                                  if (!mounted) return;
+                                  AppNotice.showError(parentContext, 'Invalid phone');
                                   return;
                                 }
 
@@ -923,29 +929,30 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                                   final resp = await OtpService.sendOtp(uid: targetUid, phone: phoneToVerify);
                                   if (resp['ok'] == true) {
                                     if (!mounted) return;
-                                    WidgetsBinding.instance.addPostFrameCallback((_) {
-                                      AppNotice.showSuccess(context, 'Verification code sent.');
-                                      Navigator.of(context).pushNamed('/verify-phone-link', arguments: {
-                                        'phone': phoneToVerify,
-                                        'uid': targetUid,
-                                        'sentAt': DateTime.now().toIso8601String(),
-                                        'returnTo': '/edit-profile',
-                                        'returnArgs': {'userId': widget.userId},
-                                      });
+                                    AppNotice.showSuccess(parentContext, 'Verification code sent.');
+                                    Navigator.of(parentContext).pushNamed('/verify-phone-link', arguments: {
+                                      'phone': phoneToVerify,
+                                      'uid': targetUid,
+                                      'sentAt': DateTime.now().toIso8601String(),
+                                      'returnTo': '/edit-profile',
+                                      'returnArgs': {'userId': widget.userId},
                                     });
                                   } else {
                                     if (!mounted) return;
                                     setModalState(() => sendingOtp = false);
-                                    WidgetsBinding.instance.addPostFrameCallback((_) {
-                                      AppNotice.showError(context, resp['error'] ?? resp['body'] ?? 'Failed to send verification code.');
-                                    });
+                                    AppNotice.showError(
+                                      parentContext,
+                                      resp['error'] ?? resp['body'] ?? 'Failed to send verification code.',
+                                    );
                                   }
                                 } catch (e) {
                                   if (!mounted) return;
                                   setModalState(() => sendingOtp = false);
-                                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                                    AppNotice.showError(context, e, fallbackMessage: 'Failed to send verification code.');
-                                  });
+                                  AppNotice.showError(
+                                    parentContext,
+                                    e,
+                                    fallbackMessage: 'Failed to send verification code.',
+                                  );
                                 }
                               },
                         child: Row(
@@ -975,15 +982,38 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 6.0),
                     child: DropdownButtonFormField<String>(
+                      alignment: Alignment.center,
+                      menuMaxHeight: 260,
+                      borderRadius: BorderRadius.circular(18),
+                      itemHeight: 52,
                       initialValue: relationOptions.contains(selectedRelation) ? selectedRelation : null,
                       items: relationOptions
-                          .map((r) => DropdownMenuItem(value: r, child: Text(r)))
+                          .map(
+                            (r) => DropdownMenuItem(
+                              value: r,
+                              alignment: Alignment.center,
+                              child: Center(child: Text(r, textAlign: TextAlign.center)),
+                            ),
+                          )
                           .toList(),
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         labelText: 'Profile created for',
-                        border: OutlineInputBorder(),
+                        filled: true,
+                        fillColor: const Color(0xFFF7F5F2),
                         isDense: true,
-                        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(18),
+                          borderSide: BorderSide.none,
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(18),
+                          borderSide: BorderSide.none,
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(18),
+                          borderSide: const BorderSide(color: Color(0xFF16A34A), width: 1.2),
+                        ),
                       ),
                       onChanged: (v) => setModalState(() => selectedRelation = v ?? ''),
                     ),
@@ -1245,16 +1275,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       _bloc.add(const SaveProfile());
     }
 
-    fullNameController.dispose();
-    emailController.dispose();
-    phoneController.dispose();
-    othersRelationController.dispose();
-    genderController.dispose();
-    heightController.dispose();
-    // heightUnitController removed; selectedHeightUnit is stored instead
-    cityController.dispose();
-    // countryController removed; country is fixed to India
-    aboutMeController.dispose();
   }
 
   Future<void> _showReligiousInformationModal(EditProfileLoaded state) async {
@@ -1291,8 +1311,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       },
     );
 
-    religionController.dispose();
-    casteController.dispose();
   }
 
   Future<void> _showFamilyInformationModal(EditProfileLoaded state) async {
@@ -1315,11 +1333,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       },
     );
 
-    familyDetailsController.dispose();
   }
 
   Future<void> _showEducationCareerModal(EditProfileLoaded state) async {
-    final educationController = TextEditingController(text: state.profile.education ?? '');
+    final degreeController = TextEditingController(text: state.profile.degree ?? '');
+    final disciplineController = TextEditingController(text: state.profile.discipline ?? '');
     final occupationController = TextEditingController(text: state.profile.occupation ?? '');
     final incomeController = TextEditingController(text: state.profile.income ?? '');
 
@@ -1328,9 +1346,15 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       child: Column(
         children: [
           CustomTextField(
-            controller: educationController,
-            labelText: 'Education',
+            controller: degreeController,
+            labelText: 'Degree',
             icon: Icons.school_outlined,
+          ),
+          const SizedBox(height: 12),
+          CustomTextField(
+            controller: disciplineController,
+            labelText: 'Discipline / Course',
+            icon: Icons.menu_book_outlined,
           ),
           const SizedBox(height: 12),
           CustomTextField(
@@ -1349,8 +1373,12 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       ),
       onSave: () {
         _bloc.add(UpdateProfileField(
-          'education',
-          educationController.text.trim().isEmpty ? null : educationController.text.trim(),
+          'degree',
+          degreeController.text.trim().isEmpty ? null : degreeController.text.trim(),
+        ));
+        _bloc.add(UpdateProfileField(
+          'discipline',
+          disciplineController.text.trim().isEmpty ? null : disciplineController.text.trim(),
         ));
         _bloc.add(UpdateProfileField(
           'occupation',
@@ -1364,9 +1392,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       },
     );
 
-    educationController.dispose();
-    occupationController.dispose();
-    incomeController.dispose();
   }
 
   Future<void> _showLifestyleModal(EditProfileLoaded state) async {
@@ -1485,7 +1510,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       ),
     );
 
-    hobbiesController.dispose();
   }
 
   Future<void> _showAboutMeModal(EditProfileLoaded state) async {
@@ -1508,7 +1532,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       },
     );
 
-    aboutMeController.dispose();
   }
 
   Future<void> _showFormModal({

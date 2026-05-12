@@ -1328,102 +1328,86 @@ class _DiscoverDrawer extends StatelessWidget {
               return likesList;
             }
 
-            return Stack(
-              children: [
-                likesList,
-                Positioned.fill(
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(24),
-                    child: BackdropFilter(
-                      filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-                      child: Container(
-                        color: Colors.white.withValues(alpha: 0.62),
-                        padding: const EdgeInsets.all(20),
-                        child: Center(
-                          child: Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.all(20),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.88),
-                              borderRadius: BorderRadius.circular(24),
-                              border: Border.all(
-                                color: const Color(0xFFE5E7EB),
+            return ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 320),
+              child: Stack(
+                children: [
+                  likesList,
+                  Positioned.fill(
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(24),
+                      child: BackdropFilter(
+                        filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+                        child: Container(
+                          color: Colors.white.withValues(alpha: 0.62),
+                          child: Stack(
+                            children: [
+                              Align(
+                                alignment: Alignment.topCenter,
+                                child: Padding(
+                                  padding: const EdgeInsets.only(top: 28),
+                                  child: Container(
+                                    width: 54,
+                                    height: 54,
+                                    decoration: BoxDecoration(
+                                      color: Colors.white.withValues(alpha: 0.76),
+                                      shape: BoxShape.circle,
+                                      border: Border.all(
+                                        color: Colors.white.withValues(alpha: 0.9),
+                                      ),
+                                    ),
+                                    child: const Icon(
+                                      Icons.lock_rounded,
+                                      color: Color(0xFFAA7A00),
+                                      size: 28,
+                                    ),
+                                  ),
+                                ),
                               ),
-                              boxShadow: const [
-                                BoxShadow(
-                                  color: Color(0x14000000),
-                                  blurRadius: 20,
-                                  offset: Offset(0, 8),
-                                ),
-                              ],
-                            ),
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(
-                                  Icons.lock_rounded,
-                                  color: Color(0xFFAA7A00),
-                                  size: 28,
-                                ),
-                                const SizedBox(height: 12),
-                                const Text(
-                                  'Premium required',
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(
-                                    color: kDeepGreen,
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                const Text(
-                                  'Upgrade to Premium to see everyone who liked your profile.',
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(
-                                    color: Color(0xFF667085),
-                                    height: 1.4,
-                                  ),
-                                ),
-                                const SizedBox(height: 16),
-                                SizedBox(
-                                  width: double.infinity,
-                                  child: ElevatedButton(
-                                    onPressed: () {
-                                      Navigator.of(context).pop();
-                                      Navigator.of(context).pushNamed(
-                                        '/payment',
-                                        arguments: const {
-                                          'initialPlanId': 'premium',
-                                        },
-                                      );
-                                    },
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: kPrimaryGreen,
-                                      foregroundColor: Colors.white,
-                                      padding: const EdgeInsets.symmetric(
-                                        vertical: 14,
+                              Align(
+                                alignment: Alignment.bottomCenter,
+                                child: Padding(
+                                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+                                  child: SizedBox(
+                                    width: double.infinity,
+                                    child: ElevatedButton(
+                                      onPressed: () {
+                                        Navigator.of(context).pop();
+                                        Navigator.of(context).pushNamed(
+                                          '/payment',
+                                          arguments: const {
+                                            'initialPlanId': 'premium',
+                                          },
+                                        );
+                                      },
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: kPrimaryGreen,
+                                        foregroundColor: Colors.white,
+                                        padding: const EdgeInsets.symmetric(
+                                          vertical: 14,
+                                        ),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(16),
+                                        ),
                                       ),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(16),
-                                      ),
-                                    ),
-                                    child: const Text(
-                                      'Upgrade to Premium',
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.w800,
+                                      child: const Text(
+                                        'Go Premium',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w800,
+                                        ),
                                       ),
                                     ),
                                   ),
                                 ),
-                              ],
-                            ),
+                              ),
+                            ],
                           ),
                         ),
                       ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             );
           },
         ),
@@ -1866,6 +1850,40 @@ class _ProfileCardStackState extends State<_ProfileCardStack> {
   late final PageController _pageController;
   final Set<String> _dismissedProfileIds = <String>{};
 
+  Future<void> _advanceAfterLike({
+    required String profileId,
+    required int visibleCount,
+  }) async {
+    if (visibleCount <= 1) {
+      if (!mounted) return;
+      setState(() {
+        _dismissedProfileIds.add(profileId);
+        _currentIndex = 0;
+      });
+      return;
+    }
+
+    final nextIndex = (_currentIndex + 1).clamp(0, visibleCount - 1);
+    if (_pageController.hasClients && nextIndex != _currentIndex) {
+      await _pageController.animateToPage(
+        nextIndex,
+        duration: const Duration(milliseconds: 240),
+        curve: Curves.easeOutCubic,
+      );
+    }
+    if (!mounted) return;
+    setState(() {
+      _dismissedProfileIds.add(profileId);
+      _currentIndex = nextIndex - 1;
+      if (_currentIndex < 0) {
+        _currentIndex = 0;
+      }
+    });
+    if (_pageController.hasClients) {
+      _pageController.jumpToPage(_currentIndex);
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -1944,6 +1962,10 @@ class _ProfileCardStackState extends State<_ProfileCardStack> {
                 widget.onUnlike(item.uid);
               } else {
                 widget.onLike(item.uid);
+                _advanceAfterLike(
+                  profileId: item.uid,
+                  visibleCount: visibleProfiles.length,
+                );
               }
             },
             onReject: () {

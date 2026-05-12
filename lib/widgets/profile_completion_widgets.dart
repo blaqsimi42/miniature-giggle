@@ -408,12 +408,14 @@ class ProfileCompletionGateCard extends StatelessWidget {
 class PhotoUploadBox extends StatelessWidget {
   final List<String> photos;
   final VoidCallback onTap;
+  final ValueChanged<String>? onDeletePhoto;
   final String? helperText;
 
   const PhotoUploadBox({
     super.key,
     required this.photos,
     required this.onTap,
+    this.onDeletePhoto,
     this.helperText,
   });
 
@@ -459,14 +461,51 @@ class PhotoUploadBox extends StatelessWidget {
                 spacing: 10,
                 runSpacing: 10,
                 children: photos.take(4).map((photo) {
-                  return ClipRRect(
-                    borderRadius: BorderRadius.circular(14),
-                    child: Image.network(
-                      photo,
-                      width: 72,
-                      height: 72,
-                      fit: BoxFit.cover,
-                    ),
+                  return Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(14),
+                        child: Image.network(
+                          photo,
+                          width: 72,
+                          height: 72,
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                      if (onDeletePhoto != null)
+                        Positioned(
+                          top: -6,
+                          right: -6,
+                          child: Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              onTap: () => onDeletePhoto!(photo),
+                              customBorder: const CircleBorder(),
+                              child: Ink(
+                                width: 26,
+                                height: 26,
+                                decoration: const BoxDecoration(
+                                  color: Color(0xFFE53935),
+                                  shape: BoxShape.circle,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Color(0x22000000),
+                                      blurRadius: 8,
+                                      offset: Offset(0, 3),
+                                    ),
+                                  ],
+                                ),
+                                child: const Icon(
+                                  Icons.close_rounded,
+                                  size: 16,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
                   );
                 }).toList(),
               ),

@@ -4,8 +4,10 @@ import 'dart:typed_data';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../core/data/india_cities.dart';
 import '../models/user_model.dart';
 import '../services/profile_completion_gate_service.dart';
 import '../services/storage_service.dart';
@@ -86,6 +88,8 @@ class _ProfileSetupJourneyScreenState extends State<ProfileSetupJourneyScreen> {
   final _educationController = TextEditingController();
   final _professionController = TextEditingController();
   final _heightController = TextEditingController();
+  final _otherSectController = TextEditingController();
+  final _otherCasteController = TextEditingController();
   final _fatherNameController = TextEditingController();
   final _fatherOccupationController = TextEditingController();
   final _motherNameController = TextEditingController();
@@ -118,6 +122,7 @@ class _ProfileSetupJourneyScreenState extends State<ProfileSetupJourneyScreen> {
   List<String> _lookingFor = <String>[];
   List<String> _photos = <String>[];
   Map<String, String> _errors = <String, String>{};
+  int? _initialStepArg;
 
   @override
   void dispose() {
@@ -127,6 +132,8 @@ class _ProfileSetupJourneyScreenState extends State<ProfileSetupJourneyScreen> {
     _educationController.dispose();
     _professionController.dispose();
     _heightController.dispose();
+    _otherSectController.dispose();
+    _otherCasteController.dispose();
     _fatherNameController.dispose();
     _fatherOccupationController.dispose();
     _motherNameController.dispose();
@@ -142,12 +149,12 @@ class _ProfileSetupJourneyScreenState extends State<ProfileSetupJourneyScreen> {
     super.didChangeDependencies();
     if (_didLoadProfile) return;
     _didLoadProfile = true;
+    final args = ModalRoute.of(context)?.settings.arguments;
+    _initialStepArg = args is Map ? args['initialStep'] as int? : null;
     unawaited(_loadProfile());
   }
 
   Future<void> _loadProfile() async {
-    final args = ModalRoute.of(context)?.settings.arguments;
-    final initialStepArg = args is Map ? args['initialStep'] as int? : null;
     final profile = await ProfileCompletionGateService.loadCurrentProfile();
     if (!mounted) return;
     _profile = profile;
@@ -157,8 +164,23 @@ class _ProfileSetupJourneyScreenState extends State<ProfileSetupJourneyScreen> {
     _gender = profile?.gender;
     _cityController.text = profile?.city ?? profile?.location?['city'] ?? '';
     _religion = profile?.religion?.trim().isNotEmpty == true ? profile!.religion : 'Islam';
-    _sect = profile?.sect;
-    _caste = profile?.caste;
+    final savedSect = profile?.sect?.trim();
+    if (savedSect != null && savedSect.isNotEmpty && !_kSectOptions.contains(savedSect)) {
+      _sect = 'Other';
+      _otherSectController.text = savedSect;
+    } else {
+      _sect = savedSect;
+      _otherSectController.clear();
+    }
+    final casteOptions = ['Prefer not to say', 'Syed', 'Sheikh', 'Other'];
+    final savedCaste = profile?.caste?.trim();
+    if (savedCaste != null && savedCaste.isNotEmpty && !casteOptions.contains(savedCaste)) {
+      _caste = 'Other';
+      _otherCasteController.text = savedCaste;
+    } else {
+      _caste = savedCaste;
+      _otherCasteController.clear();
+    }
     _prayerLevel = profile?.prayerLevel;
     _religiousPracticeLevel = profile?.religiousPracticeLevel;
     _educationController.text = profile?.education ?? '';
@@ -183,7 +205,7 @@ class _ProfileSetupJourneyScreenState extends State<ProfileSetupJourneyScreen> {
     _photos = {...?profile?.photos, ...?profile?.profileImages}.toList();
     _hidePhoto = profile?.hidePhoto ?? false;
     _profilePrivacy = profile?.profilePrivacy;
-    _currentStep = (initialStepArg ?? inferJourneyStep(profile)).clamp(0, 5);
+    _currentStep = (_initialStepArg ?? inferJourneyStep(profile)).clamp(0, 5);
     _loading = false;
     setState(() {});
   }
@@ -215,6 +237,7 @@ class _ProfileSetupJourneyScreenState extends State<ProfileSetupJourneyScreen> {
     if (image == null) return;
     if (!mounted) return;
 
+    _showPhotoUploadDialog();
     setState(() => _saving = true);
     try {
       final Uint8List bytes = await image.readAsBytes();
@@ -224,7 +247,6 @@ class _ProfileSetupJourneyScreenState extends State<ProfileSetupJourneyScreen> {
         bytes: bytes,
         uid: authUser.uid,
         filename: filename,
-        context: context,
       );
       final nextPhotos = {..._photos, url}.toList();
       _photos = nextPhotos;
@@ -238,11 +260,194 @@ class _ProfileSetupJourneyScreenState extends State<ProfileSetupJourneyScreen> {
             ? _profile!.profilePhotoUrl
             : url,
       }, showSuccess: false);
+      if (!mounted) return;
+      Navigator.of(context, rootNavigator: true).pop();
+      await _showPhotoReadyDialog();
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.of(context, rootNavigator: true).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not prepare your picture right now.')),
+      );
     } finally {
       if (mounted) {
         setState(() => _saving = false);
       }
     }
+  }
+
+  Future<void> _deletePhoto(String photoUrl) async {
+    final shouldDelete = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: const Text('Remove photo?'),
+        content: const Text(
+          'This photo will be removed from your uploaded pictures.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFE53935),
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (shouldDelete != true || !mounted) return;
+
+    setState(() => _saving = true);
+    try {
+      final nextPhotos = _photos.where((photo) => photo != photoUrl).toList();
+      final currentPrimary = _profile?.profilePictureUrl?.trim();
+      final currentSecondaryPrimary = _profile?.profilePhotoUrl?.trim();
+      final nextPrimary = nextPhotos.isNotEmpty ? nextPhotos.first : null;
+      await _saveProgress(
+        extraData: {
+          'profileImages': nextPhotos,
+          'photos': nextPhotos,
+          'profilePictureUrl': currentPrimary == photoUrl ? nextPrimary : currentPrimary,
+          'profilePhotoUrl': currentSecondaryPrimary == photoUrl ? nextPrimary : currentSecondaryPrimary,
+        },
+        showSuccess: false,
+      );
+      unawaited(_storageService.deleteFileByUrl(photoUrl));
+      if (!mounted) return;
+      setState(() {
+        _photos = nextPhotos;
+        _errors.remove('photos');
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Photo removed')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _saving = false);
+      }
+    }
+  }
+
+  void _showPhotoUploadDialog() {
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 28, 24, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: const [
+              SizedBox(
+                width: 48,
+                height: 48,
+                child: CircularProgressIndicator(
+                  strokeWidth: 3,
+                  valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF16A34A)),
+                ),
+              ),
+              SizedBox(height: 18),
+              Text(
+                'Getting your picture ready',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF171717),
+                ),
+              ),
+              SizedBox(height: 8),
+              Text(
+                'Hold on while we upload and prepare your profile photo.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 14,
+                  height: 1.45,
+                  color: Color(0xFF6B7280),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showPhotoReadyDialog() async {
+    return showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 28, 24, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEAF8EE),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: const Icon(
+                  Icons.check_rounded,
+                  color: Color(0xFF16A34A),
+                  size: 32,
+                ),
+              ),
+              const SizedBox(height: 18),
+              const Text(
+                "You're good to go!",
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF171717),
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Your profile picture is ready and added to your profile.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 14,
+                  height: 1.45,
+                  color: Color(0xFF6B7280),
+                ),
+              ),
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF16A34A),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                  ),
+                  child: const Text(
+                    'Continue',
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   bool _validateCurrentStep() {
@@ -257,13 +462,18 @@ class _ProfileSetupJourneyScreenState extends State<ProfileSetupJourneyScreen> {
       case 1:
         if ((_religion ?? '').trim().isEmpty) errors['religion'] = 'Religion is required.';
         if ((_sect ?? '').trim().isEmpty) errors['sect'] = 'Sect is required.';
+        if (_sect == 'Other' && _otherSectController.text.trim().isEmpty) {
+          errors['otherSect'] = 'Please specify your sect.';
+        }
+        if (_caste == 'Other' && _otherCasteController.text.trim().isEmpty) {
+          errors['otherCaste'] = 'Please specify your caste.';
+        }
         if ((_prayerLevel ?? '').trim().isEmpty) errors['prayerLevel'] = 'Prayer level is required.';
         if ((_religiousPracticeLevel ?? '').trim().isEmpty) {
           errors['religiousPracticeLevel'] = 'Religious practice level is required.';
         }
         break;
       case 2:
-        if (_educationController.text.trim().isEmpty) errors['education'] = 'Education is required.';
         if (_professionController.text.trim().isEmpty) errors['profession'] = 'Profession is required.';
         if (_heightController.text.trim().isEmpty) errors['height'] = 'Height is required.';
         if ((_maritalStatus ?? '').trim().isEmpty) errors['maritalStatus'] = 'Marital status is required.';
@@ -279,6 +489,100 @@ class _ProfileSetupJourneyScreenState extends State<ProfileSetupJourneyScreen> {
     }
     setState(() => _errors = errors);
     return errors.isEmpty;
+  }
+
+  Future<void> _pickIndianCity() async {
+    final picked = await showModalBottomSheet<String?>(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) {
+        String query = '';
+        return StatefulBuilder(
+          builder: (ctx, setModalState) {
+            final q = query.trim().toLowerCase();
+            List<String> filtered;
+            if (q.isEmpty) {
+              filtered = List.from(kIndiaCities);
+            } else {
+              final scored = <Map<String, dynamic>>[];
+              for (final city in kIndiaCities) {
+                final lower = city.toLowerCase();
+                int score;
+                if (lower.startsWith(q)) {
+                  score = 0;
+                } else if (lower.contains(q)) {
+                  score = 1;
+                } else {
+                  int idx = -1;
+                  var matched = true;
+                  for (final ch in q.split('')) {
+                    idx = lower.indexOf(ch, idx + 1);
+                    if (idx == -1) {
+                      matched = false;
+                      break;
+                    }
+                  }
+                  score = matched ? 2 : 3;
+                }
+                if (score < 3) {
+                  scored.add({'city': city, 'score': score});
+                }
+              }
+              scored.sort((a, b) {
+                final scoreCompare =
+                    (a['score'] as int).compareTo(b['score'] as int);
+                if (scoreCompare != 0) return scoreCompare;
+                return (a['city'] as String).compareTo(b['city'] as String);
+              });
+              filtered = scored.map((e) => e['city'] as String).toList();
+            }
+
+            return Padding(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(ctx).viewInsets.bottom,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.all(12.0),
+                    child: TextField(
+                      autofocus: true,
+                      decoration: const InputDecoration(
+                        prefixIcon: Icon(Icons.search),
+                        hintText: 'Search city',
+                        border: OutlineInputBorder(),
+                      ),
+                      onChanged: (value) => setModalState(() => query = value),
+                    ),
+                  ),
+                  SizedBox(
+                    height: 360,
+                    child: ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: filtered.length,
+                      itemBuilder: (context, index) {
+                        final city = filtered[index];
+                        return ListTile(
+                          title: Text(city),
+                          onTap: () => Navigator.of(context).pop(city),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    if (picked != null && mounted) {
+      setState(() {
+        _cityController.text = picked;
+      });
+    }
   }
 
   Future<void> _saveProgress({
@@ -301,10 +605,15 @@ class _ProfileSetupJourneyScreenState extends State<ProfileSetupJourneyScreen> {
           ? null
           : {
               'city': _cityController.text.trim(),
+              'country': 'India',
             },
       'religion': _religion,
-      'sect': _sect,
-      'caste': _caste,
+      'sect': _sect == 'Other'
+          ? _otherSectController.text.trim()
+          : _sect,
+      'caste': _caste == 'Other'
+          ? _otherCasteController.text.trim()
+          : _caste,
       'prayerLevel': _prayerLevel,
       'religiousPracticeLevel': _religiousPracticeLevel,
       'education': _educationController.text.trim(),
@@ -359,14 +668,11 @@ class _ProfileSetupJourneyScreenState extends State<ProfileSetupJourneyScreen> {
       await _userService.updateUser(uid, payload);
     }
     _profile = await _userService.getUser(uid) ?? mergedProfile;
-    if (mounted && showSuccess) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Progress saved')),
-      );
-    }
   }
 
   Future<void> _goNext() async {
+    final navigator = Navigator.of(context);
+    final messenger = ScaffoldMessenger.maybeOf(context);
     if (!_validateCurrentStep()) return;
     setState(() => _saving = true);
     try {
@@ -381,9 +687,9 @@ class _ProfileSetupJourneyScreenState extends State<ProfileSetupJourneyScreen> {
         final completion = calculateWeightedProfileCompletion(_profile);
         if (completion.meetsDiscoveryThreshold) {
           if (!mounted) return;
-          Navigator.of(context).pushNamedAndRemoveUntil('/home', (route) => false);
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
+          navigator.pushNamedAndRemoveUntil('/home', (route) => false);
+        } else if (messenger != null) {
+          messenger.showSnackBar(
             SnackBar(
               content: Text(
                 'You are at ${completion.percent}%. Add a little more to reach 70% before discovering matches.',
@@ -441,10 +747,36 @@ class _ProfileSetupJourneyScreenState extends State<ProfileSetupJourneyScreen> {
                   .toList(),
             ),
             const SizedBox(height: 14),
-            ProfileSetupTextField(
-              controller: _cityController,
-              label: 'City / location',
-              errorText: _errors['city'],
+            GestureDetector(
+              onTap: _pickIndianCity,
+              child: AbsorbPointer(
+                child: ProfileSetupTextField(
+                  controller: _cityController,
+                  label: 'City / location',
+                  errorText: _errors['city'],
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
+            InputDecorator(
+              decoration: const InputDecoration(
+                labelText: 'Country',
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+              child: Row(
+                children: [
+                  SvgPicture.asset(
+                    'assets/flags/india.svg',
+                    width: 28,
+                    height: 18,
+                  ),
+                  const SizedBox(width: 8),
+                  const Expanded(
+                    child: Text('India'),
+                  ),
+                ],
+              ),
             ),
           ],
         );
@@ -465,21 +797,47 @@ class _ProfileSetupJourneyScreenState extends State<ProfileSetupJourneyScreen> {
               label: 'Sect',
               value: _sect,
               errorText: _errors['sect'],
-              onChanged: (value) => setState(() => _sect = value),
+              onChanged: (value) => setState(() {
+                _sect = value;
+                if (value != 'Other') {
+                  _otherSectController.clear();
+                }
+              }),
               items: _kSectOptions
                   .map((value) => DropdownMenuItem(value: value, child: Text(value)))
                   .toList(),
             ),
+            if (_sect == 'Other') ...[
+              const SizedBox(height: 14),
+              ProfileSetupTextField(
+                controller: _otherSectController,
+                label: 'Other sect',
+                errorText: _errors['otherSect'],
+              ),
+            ],
             const SizedBox(height: 14),
             ProfileSetupDropdown<String>(
               label: 'Caste',
               value: _caste,
               errorText: _errors['caste'],
-              onChanged: (value) => setState(() => _caste = value),
+              onChanged: (value) => setState(() {
+                _caste = value;
+                if (value != 'Other') {
+                  _otherCasteController.clear();
+                }
+              }),
               items: ['Prefer not to say', 'Syed', 'Sheikh', 'Other']
                   .map((value) => DropdownMenuItem(value: value, child: Text(value)))
                   .toList(),
             ),
+            if (_caste == 'Other') ...[
+              const SizedBox(height: 14),
+              ProfileSetupTextField(
+                controller: _otherCasteController,
+                label: 'Other caste',
+                errorText: _errors['otherCaste'],
+              ),
+            ],
             const SizedBox(height: 14),
             ProfileSetupDropdown<String>(
               label: 'Prayer level',
@@ -505,12 +863,6 @@ class _ProfileSetupJourneyScreenState extends State<ProfileSetupJourneyScreen> {
       case 2:
         return Column(
           children: [
-            ProfileSetupTextField(
-              controller: _educationController,
-              label: 'Education',
-              errorText: _errors['education'],
-            ),
-            const SizedBox(height: 14),
             Row(
               children: [
                 Expanded(
@@ -642,15 +994,6 @@ class _ProfileSetupJourneyScreenState extends State<ProfileSetupJourneyScreen> {
               errorText: _errors['lookingFor'],
               onChanged: (values) => setState(() => _lookingFor = values),
             ),
-            const SizedBox(height: 14),
-            ProfileSetupDropdown<String>(
-              label: 'Preferred family type',
-              value: _preferredFamilyType,
-              onChanged: (value) => setState(() => _preferredFamilyType = value),
-              items: _kFamilyTypeOptions
-                  .map((value) => DropdownMenuItem(value: value, child: Text(value)))
-                  .toList(),
-            ),
           ],
         );
       default:
@@ -661,6 +1004,7 @@ class _ProfileSetupJourneyScreenState extends State<ProfileSetupJourneyScreen> {
               photos: _photos,
               helperText: _errors['photos'],
               onTap: _pickPhoto,
+              onDeletePhoto: _deletePhoto,
             ),
             const SizedBox(height: 18),
             SwitchListTile.adaptive(
