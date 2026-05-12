@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -26,11 +27,10 @@ class _MatchesScreenState extends State<MatchesScreen> {
   final Map<String, dynamic> _filters = {};
   List<dynamic> _items = [];
   String? _nextPageToken;
-  int? _minAge;
-  int? _maxAge;
   bool _loading = false;
   bool _openingProfile = false;
   bool _showAllMatches = false;
+  _MatchesFilterCatalog? _filterCatalog;
 
   bool get _hasActiveFilters => _filters.isNotEmpty;
 
@@ -50,12 +50,6 @@ class _MatchesScreenState extends State<MatchesScreen> {
           ..clear()
           ..addAll(saved);
         _occupationController.text = saved['occupation'] ?? '';
-        _minAge = saved['minAge'] is int
-            ? saved['minAge'] as int
-            : int.tryParse('${saved['minAge'] ?? ''}');
-        _maxAge = saved['maxAge'] is int
-            ? saved['maxAge'] as int
-            : int.tryParse('${saved['maxAge'] ?? ''}');
       }
     } catch (_) {}
 
@@ -72,6 +66,65 @@ class _MatchesScreenState extends State<MatchesScreen> {
     }
 
     await _loadFirstPage();
+  }
+
+  Future<_MatchesFilterCatalog> _loadFilterCatalog() async {
+    if (_filterCatalog != null) {
+      return _filterCatalog!;
+    }
+
+    QuerySnapshot<Map<String, dynamic>> snapshot;
+    try {
+      snapshot = await FirebaseFirestore.instance.collection('users').get();
+    } catch (_) {
+      const emptyCatalog = _MatchesFilterCatalog(
+        occupations: <String>[],
+        religions: <String>[],
+        locations: <String>[],
+        ages: <int>[],
+        heights: <double>[],
+      );
+      _filterCatalog = emptyCatalog;
+      return emptyCatalog;
+    }
+
+    final occupations = <String>{};
+    final religions = <String>{};
+    final locations = <String>{};
+    final ages = <int>{};
+    final heights = <double>{};
+
+    for (final doc in snapshot.docs) {
+      final data = doc.data();
+
+      final occupation = (data['occupation'] as String?)?.trim() ?? '';
+      if (occupation.isNotEmpty) occupations.add(occupation);
+
+      final religion = (data['religion'] as String?)?.trim() ?? '';
+      if (religion.isNotEmpty) religions.add(religion);
+
+      final location = _locationLabelFromMap(data['location']);
+      if (location.isNotEmpty) locations.add(location);
+
+      final dob = data['dateOfBirth'];
+      if (dob is Timestamp) {
+        ages.add(_calculateAge(dob.toDate()));
+      }
+
+      final height = data['height'];
+      if (height is num) {
+        heights.add(height.toDouble());
+      }
+    }
+
+    _filterCatalog = _MatchesFilterCatalog(
+      occupations: occupations.toList()..sort(),
+      religions: religions.toList()..sort(),
+      locations: locations.toList()..sort(),
+      ages: ages.toList()..sort(),
+      heights: heights.toList()..sort(),
+    );
+    return _filterCatalog!;
   }
 
   Future<void> _loadFirstPage() async {
@@ -162,209 +215,103 @@ class _MatchesScreenState extends State<MatchesScreen> {
   }
 
   Future<void> _openFilterSheet() async {
+    final catalog = await _loadFilterCatalog();
+    if (!mounted) return;
+
     final res = await showModalBottomSheet<Map<String, dynamic>>(
       context: context,
       isScrollControlled: true,
-      builder: (context) {
-        final occCtrl = TextEditingController(
-          text: _occupationController.text,
-        );
-        final minCtrl = TextEditingController(text: _minAge?.toString() ?? '');
-        final maxCtrl = TextEditingController(text: _maxAge?.toString() ?? '');
-        final minH = TextEditingController(
-          text: _filters['minHeight']?.toString() ?? '',
-        );
-        final maxH = TextEditingController(
-          text: _filters['maxHeight']?.toString() ?? '',
-        );
-        final religionCtrl = TextEditingController(
-          text: _filters['religion'] ?? '',
-        );
-        final locLat = TextEditingController(
-          text: _filters['location'] != null
-              ? (_filters['location']['lat']?.toString() ?? '')
-              : '',
-        );
-        final locLng = TextEditingController(
-          text: _filters['location'] != null
-              ? (_filters['location']['lng']?.toString() ?? '')
-              : '',
-        );
-        final locRad = TextEditingController(
-          text: _filters['location'] != null
-              ? (_filters['location']['radiusKm']?.toString() ?? '')
-              : '',
-        );
-
-        return Padding(
-            padding: MediaQuery.of(context).viewInsets.isNonNegative
-              ? MediaQuery.of(context).viewInsets
-              : EdgeInsets.zero,
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextField(
-                    controller: occCtrl,
-                    decoration: const InputDecoration(labelText: 'Occupation'),
-                  ),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: minCtrl,
-                          decoration: const InputDecoration(labelText: 'Min age'),
-                          keyboardType: TextInputType.number,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: TextField(
-                          controller: maxCtrl,
-                          decoration: const InputDecoration(labelText: 'Max age'),
-                          keyboardType: TextInputType.number,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: minH,
-                          decoration: const InputDecoration(
-                            labelText: 'Min height (ft)',
-                          ),
-                          keyboardType: TextInputType.number,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: TextField(
-                          controller: maxH,
-                          decoration: const InputDecoration(
-                            labelText: 'Max height (ft)',
-                          ),
-                          keyboardType: TextInputType.number,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: religionCtrl,
-                    decoration: const InputDecoration(labelText: 'Religion'),
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: locLat,
-                          decoration: const InputDecoration(
-                            labelText: 'Location lat',
-                          ),
-                          keyboardType: TextInputType.number,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: TextField(
-                          controller: locLng,
-                          decoration: const InputDecoration(
-                            labelText: 'Location lng',
-                          ),
-                          keyboardType: TextInputType.number,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      SizedBox(
-                        width: 100,
-                        child: TextField(
-                          controller: locRad,
-                          decoration: const InputDecoration(
-                            labelText: 'Radius km',
-                          ),
-                          keyboardType: TextInputType.number,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      TextButton(
-                        onPressed: () => Navigator.of(context).pop(),
-                        child: const Text('Cancel'),
-                      ),
-                      const SizedBox(width: 8),
-                      TextButton(
-                        onPressed: () => Navigator.of(context).pop(<String, dynamic>{}),
-                        child: const Text('Clear'),
-                      ),
-                      const SizedBox(width: 8),
-                      FilledButton(
-                        onPressed: () async {
-                          final out = <String, dynamic>{};
-                          final occ = occCtrl.text.trim();
-                          if (occ.isNotEmpty) out['occupation'] = occ;
-                          final min = int.tryParse(minCtrl.text.trim());
-                          final max = int.tryParse(maxCtrl.text.trim());
-                          if (min != null) out['minAge'] = min;
-                          if (max != null) out['maxAge'] = max;
-                          final minHeight = int.tryParse(minH.text.trim());
-                          final maxHeight = int.tryParse(maxH.text.trim());
-                          if (minHeight != null) out['minHeight'] = minHeight;
-                          if (maxHeight != null) out['maxHeight'] = maxHeight;
-                          final rel = religionCtrl.text.trim();
-                          if (rel.isNotEmpty) out['religion'] = rel;
-                          final lat = double.tryParse(locLat.text.trim());
-                          final lng = double.tryParse(locLng.text.trim());
-                          final radius = double.tryParse(locRad.text.trim());
-                          if (lat != null && lng != null && radius != null) {
-                            out['location'] = {
-                              'lat': lat,
-                              'lng': lng,
-                              'radiusKm': radius,
-                            };
-                          }
-
-                          final prefs = await SharedPreferences.getInstance();
-                          await prefs.setString(
-                            'matches_filters',
-                            jsonEncode(out),
-                          );
-                          if (!context.mounted) return;
-                          Navigator.of(context).pop(out);
-                        },
-                        child: const Text('Apply'),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
+      backgroundColor: Colors.transparent,
+      builder: (context) => _MatchesDatabaseFilterSheet(
+        initialFilters: Map<String, dynamic>.from(_filters),
+        catalog: catalog,
+      ),
     );
 
     if (res != null) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        'matches_filters',
+        jsonEncode(res),
+      );
+      if (!mounted) return;
       setState(() {
         _filters
           ..clear()
           ..addAll(res);
         _occupationController.text = res['occupation'] ?? '';
-        _minAge = res['minAge'] as int?;
-        _maxAge = res['maxAge'] as int?;
         _showAllMatches = false;
       });
       _loadFirstPage();
     }
+  }
+
+  List<dynamic> _applyClientSideFilters(List<dynamic> items) {
+    if (_filters.isEmpty) {
+      return items;
+    }
+
+    return items.where((item) {
+      final map = item is Map<String, dynamic>
+          ? item
+          : Map<String, dynamic>.from(item as Map);
+      final profile = map['profile'] is Map<String, dynamic>
+          ? map['profile'] as Map<String, dynamic>
+          : const <String, dynamic>{};
+
+      final minAge = _filters['minAge'] is int
+          ? _filters['minAge'] as int
+          : int.tryParse('${_filters['minAge'] ?? ''}');
+      final maxAge = _filters['maxAge'] is int
+          ? _filters['maxAge'] as int
+          : int.tryParse('${_filters['maxAge'] ?? ''}');
+      final age = profile['age'] is int
+          ? profile['age'] as int
+          : int.tryParse('${profile['age'] ?? ''}');
+      if (minAge != null && (age == null || age < minAge)) return false;
+      if (maxAge != null && (age == null || age > maxAge)) return false;
+
+      final minHeight = _filters['minHeight'] is num
+          ? (_filters['minHeight'] as num).toDouble()
+          : double.tryParse('${_filters['minHeight'] ?? ''}');
+      final maxHeight = _filters['maxHeight'] is num
+          ? (_filters['maxHeight'] as num).toDouble()
+          : double.tryParse('${_filters['maxHeight'] ?? ''}');
+      final height = profile['height'] is num
+          ? (profile['height'] as num).toDouble()
+          : double.tryParse('${profile['height'] ?? ''}');
+      if (minHeight != null && (height == null || height < minHeight)) {
+        return false;
+      }
+      if (maxHeight != null && (height == null || height > maxHeight)) {
+        return false;
+      }
+
+      final occupationFilter =
+          (_filters['occupation'] as String?)?.trim().toLowerCase() ?? '';
+      final occupation = (profile['occupation'] as String?)?.trim().toLowerCase() ?? '';
+      if (occupationFilter.isNotEmpty && !occupation.contains(occupationFilter)) {
+        return false;
+      }
+
+      final religionFilter =
+          (_filters['religion'] as String?)?.trim().toLowerCase() ?? '';
+      final religion = (profile['religion'] as String?)?.trim().toLowerCase() ?? '';
+      if (religionFilter.isNotEmpty && religion != religionFilter) {
+        return false;
+      }
+
+      final locationFilter =
+          (_filters['locationLabel'] as String?)?.trim().toLowerCase() ?? '';
+      final location = ((profile['locationLabel'] ?? '') as String)
+          .trim()
+          .toLowerCase();
+      if (locationFilter.isNotEmpty && !location.contains(locationFilter)) {
+        return false;
+      }
+
+      return true;
+    }).toList();
   }
 
   @override
@@ -373,9 +320,10 @@ class _MatchesScreenState extends State<MatchesScreen> {
         ? 'Sorry, we couldn\'t get a match.'
         : 'No profiles are available right now. Please check back shortly.';
     final bottomActionInset = widget.embedOnly ? 112.0 : 24.0;
-    final visibleItems = _showAllMatches || _items.length <= 5
-        ? _items
-        : _items.take(5).toList();
+    final filteredItems = _applyClientSideFilters(_items);
+    final visibleItems = _showAllMatches || filteredItems.length <= 5
+        ? filteredItems
+        : filteredItems.take(5).toList();
 
     final body = Column(
       children: [
@@ -410,9 +358,9 @@ class _MatchesScreenState extends State<MatchesScreen> {
           ),
         ),
         Expanded(
-          child: _loading && _items.isEmpty
+          child: _loading && filteredItems.isEmpty
               ? const Center(child: CircularProgressIndicator())
-              : _items.isEmpty
+              : filteredItems.isEmpty
                   ? Center(
                       child: Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 24.0),
@@ -453,7 +401,7 @@ class _MatchesScreenState extends State<MatchesScreen> {
                           ),
                           const SizedBox(height: 16),
                         ],
-                        if (_items.length > 5 && !_showAllMatches)
+                        if (filteredItems.length > 5 && !_showAllMatches)
                           Padding(
                             padding: const EdgeInsets.only(top: 4, bottom: 8),
                             child: Center(
@@ -498,7 +446,7 @@ class _MatchesScreenState extends State<MatchesScreen> {
                               ),
                             ),
                           ),
-                        if (_items.length > 5 && _showAllMatches)
+                        if (filteredItems.length > 5 && _showAllMatches)
                           Padding(
                             padding: const EdgeInsets.only(top: 4, bottom: 8),
                             child: Center(
@@ -555,6 +503,517 @@ class _MatchesScreenState extends State<MatchesScreen> {
   void dispose() {
     _occupationController.dispose();
     super.dispose();
+  }
+}
+
+int _calculateAge(DateTime dateOfBirth) {
+  final now = DateTime.now();
+  var age = now.year - dateOfBirth.year;
+  final hadBirthday =
+      now.month > dateOfBirth.month ||
+      (now.month == dateOfBirth.month && now.day >= dateOfBirth.day);
+  if (!hadBirthday) age--;
+  return age;
+}
+
+String _locationLabelFromMap(Object? rawLocation) {
+  if (rawLocation is! Map) return '';
+  final city = '${rawLocation['city'] ?? ''}'.trim();
+  final state = '${rawLocation['state'] ?? ''}'.trim();
+  final country = '${rawLocation['country'] ?? ''}'.trim();
+  return [city, state, country]
+      .where((part) => part.isNotEmpty)
+      .join(', ');
+}
+
+String _formatHeightOption(double value) {
+  final hasFraction = value % 1 != 0;
+  return hasFraction ? value.toStringAsFixed(1) : value.toStringAsFixed(0);
+}
+
+class _MatchesFilterCatalog {
+  final List<String> occupations;
+  final List<String> religions;
+  final List<String> locations;
+  final List<int> ages;
+  final List<double> heights;
+
+  const _MatchesFilterCatalog({
+    required this.occupations,
+    required this.religions,
+    required this.locations,
+    required this.ages,
+    required this.heights,
+  });
+}
+
+class _MatchesDatabaseFilterSheet extends StatefulWidget {
+  final Map<String, dynamic> initialFilters;
+  final _MatchesFilterCatalog catalog;
+
+  const _MatchesDatabaseFilterSheet({
+    required this.initialFilters,
+    required this.catalog,
+  });
+
+  @override
+  State<_MatchesDatabaseFilterSheet> createState() =>
+      _MatchesDatabaseFilterSheetState();
+}
+
+class _MatchesDatabaseFilterSheetState
+    extends State<_MatchesDatabaseFilterSheet> {
+  late final TextEditingController _occupationController;
+  late final TextEditingController _religionController;
+  late final TextEditingController _locationController;
+
+  int? _minAge;
+  int? _maxAge;
+  double? _minHeight;
+  double? _maxHeight;
+
+  @override
+  void initState() {
+    super.initState();
+    _occupationController = TextEditingController(
+      text: widget.initialFilters['occupation']?.toString() ?? '',
+    );
+    _religionController = TextEditingController(
+      text: widget.initialFilters['religion']?.toString() ?? '',
+    );
+    _locationController = TextEditingController(
+      text: widget.initialFilters['locationLabel']?.toString() ?? '',
+    );
+    _minAge = widget.initialFilters['minAge'] is int
+        ? widget.initialFilters['minAge'] as int
+        : int.tryParse('${widget.initialFilters['minAge'] ?? ''}');
+    _maxAge = widget.initialFilters['maxAge'] is int
+        ? widget.initialFilters['maxAge'] as int
+        : int.tryParse('${widget.initialFilters['maxAge'] ?? ''}');
+    _minHeight = widget.initialFilters['minHeight'] is num
+        ? (widget.initialFilters['minHeight'] as num).toDouble()
+        : double.tryParse('${widget.initialFilters['minHeight'] ?? ''}');
+    _maxHeight = widget.initialFilters['maxHeight'] is num
+        ? (widget.initialFilters['maxHeight'] as num).toDouble()
+        : double.tryParse('${widget.initialFilters['maxHeight'] ?? ''}');
+  }
+
+  @override
+  void dispose() {
+    _occupationController.dispose();
+    _religionController.dispose();
+    _locationController.dispose();
+    super.dispose();
+  }
+
+  void _reset() {
+    setState(() {
+      _occupationController.clear();
+      _religionController.clear();
+      _locationController.clear();
+      _minAge = null;
+      _maxAge = null;
+      _minHeight = null;
+      _maxHeight = null;
+    });
+  }
+
+  void _apply() {
+    final out = <String, dynamic>{};
+    final occupation = _occupationController.text.trim();
+    final religion = _religionController.text.trim();
+    final locationLabel = _locationController.text.trim();
+
+    if (occupation.isNotEmpty) out['occupation'] = occupation;
+    if (religion.isNotEmpty) out['religion'] = religion;
+    if (locationLabel.isNotEmpty) out['locationLabel'] = locationLabel;
+    if (_minAge != null) out['minAge'] = _minAge;
+    if (_maxAge != null) out['maxAge'] = _maxAge;
+    if (_minHeight != null) out['minHeight'] = _minHeight;
+    if (_maxHeight != null) out['maxHeight'] = _maxHeight;
+
+    Navigator.of(context).pop(out);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final viewInsets = MediaQuery.of(context).viewInsets;
+    final viewPaddingBottom = MediaQuery.of(context).viewPadding.bottom;
+    final bottomInset = viewInsets.bottom > viewPaddingBottom
+        ? viewInsets.bottom
+        : viewPaddingBottom;
+
+    final ageOptions = widget.catalog.ages;
+    final heightOptions = widget.catalog.heights;
+
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(14, 18, 14, bottomInset + 14),
+        child: Container(
+          decoration: BoxDecoration(
+            color: const Color(0xFFFFFCF7),
+            borderRadius: BorderRadius.circular(32),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x22000000),
+                blurRadius: 30,
+                offset: Offset(0, 16),
+              ),
+            ],
+          ),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(22, 22, 22, 20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        'Match filters',
+                        style: TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: const Icon(Icons.close_rounded),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Search existing data for occupation, religion, location, age, and height, then apply refined results.',
+                  style: TextStyle(
+                    color: Color(0xFF667085),
+                    height: 1.45,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                _MatchesSuggestionField(
+                  controller: _occupationController,
+                  label: 'Occupation',
+                  hintText: 'Search occupations from profiles',
+                  icon: Icons.work_outline_rounded,
+                  suggestions: widget.catalog.occupations,
+                ),
+                const SizedBox(height: 18),
+                _MatchesSuggestionField(
+                  controller: _religionController,
+                  label: 'Religion',
+                  hintText: 'Search religions from profiles',
+                  icon: Icons.mosque_outlined,
+                  suggestions: widget.catalog.religions,
+                ),
+                const SizedBox(height: 18),
+                _MatchesSuggestionField(
+                  controller: _locationController,
+                  label: 'Location',
+                  hintText: 'Search profile locations',
+                  icon: Icons.location_on_outlined,
+                  suggestions: widget.catalog.locations,
+                ),
+                const SizedBox(height: 22),
+                const Text(
+                  'Age range',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF0F3D2E),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _MatchesDropdownField<int>(
+                        label: 'Minimum age',
+                        icon: Icons.cake_outlined,
+                        value: _minAge,
+                        options: ageOptions,
+                        displayText: (value) => '$value years',
+                        onChanged: (value) => setState(() => _minAge = value),
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: _MatchesDropdownField<int>(
+                        label: 'Maximum age',
+                        icon: Icons.cake_rounded,
+                        value: _maxAge,
+                        options: ageOptions,
+                        displayText: (value) => '$value years',
+                        onChanged: (value) => setState(() => _maxAge = value),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 22),
+                const Text(
+                  'Height range',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF0F3D2E),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _MatchesDropdownField<double>(
+                        label: 'Minimum height',
+                        icon: Icons.height_rounded,
+                        value: _minHeight,
+                        options: heightOptions,
+                        displayText: (value) => _formatHeightOption(value),
+                        onChanged: (value) => setState(() => _minHeight = value),
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: _MatchesDropdownField<double>(
+                        label: 'Maximum height',
+                        icon: Icons.height_rounded,
+                        value: _maxHeight,
+                        options: heightOptions,
+                        displayText: (value) => _formatHeightOption(value),
+                        onChanged: (value) => setState(() => _maxHeight = value),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 28),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: _reset,
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          side: const BorderSide(color: Color(0xFFD6E2D9)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(18),
+                          ),
+                        ),
+                        child: const Text('Clear'),
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: FilledButton(
+                        onPressed: _apply,
+                        style: FilledButton.styleFrom(
+                          backgroundColor: const Color(0xFF16A34A),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(18),
+                          ),
+                        ),
+                        child: const Text(
+                          'Apply filters',
+                          style: TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MatchesSuggestionField extends StatefulWidget {
+  final TextEditingController controller;
+  final String label;
+  final String hintText;
+  final IconData icon;
+  final List<String> suggestions;
+
+  const _MatchesSuggestionField({
+    required this.controller,
+    required this.label,
+    required this.hintText,
+    required this.icon,
+    required this.suggestions,
+  });
+
+  @override
+  State<_MatchesSuggestionField> createState() => _MatchesSuggestionFieldState();
+}
+
+class _MatchesSuggestionFieldState extends State<_MatchesSuggestionField> {
+  late final FocusNode _focusNode;
+
+  @override
+  void initState() {
+    super.initState();
+    _focusNode = FocusNode();
+    widget.controller.addListener(_handleChanged);
+    _focusNode.addListener(_handleChanged);
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_handleChanged);
+    _focusNode.removeListener(_handleChanged);
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  void _handleChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final query = widget.controller.text.trim().toLowerCase();
+    final filtered = (query.isEmpty
+            ? widget.suggestions
+            : widget.suggestions
+                .where((option) => option.toLowerCase().contains(query))
+                .toList())
+        .take(8)
+        .toList();
+    final showSuggestions = _focusNode.hasFocus && filtered.isNotEmpty;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        TextField(
+          controller: widget.controller,
+          focusNode: _focusNode,
+          decoration: InputDecoration(
+            labelText: widget.label,
+            hintText: widget.hintText,
+            prefixIcon: Icon(widget.icon, color: const Color(0xFF16A34A)),
+            filled: true,
+            fillColor: Colors.white,
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 18,
+            ),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(18),
+              borderSide: const BorderSide(color: Color(0xFFD6E2D9)),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(18),
+              borderSide: const BorderSide(color: Color(0xFFD6E2D9)),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(18),
+              borderSide: const BorderSide(
+                color: Color(0xFF16A34A),
+                width: 1.4,
+              ),
+            ),
+          ),
+        ),
+        if (showSuggestions) ...[
+          const SizedBox(height: 10),
+          Material(
+            elevation: 6,
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 220),
+              child: ListView.separated(
+                shrinkWrap: true,
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                itemCount: filtered.length,
+                separatorBuilder: (context, index) => const Divider(height: 1),
+                itemBuilder: (context, index) {
+                  final option = filtered[index];
+                  return ListTile(
+                    dense: true,
+                    title: Text(option),
+                    onTap: () {
+                      widget.controller.text = option;
+                      _focusNode.unfocus();
+                    },
+                  );
+                },
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _MatchesDropdownField<T> extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final T? value;
+  final List<T> options;
+  final String Function(T value) displayText;
+  final ValueChanged<T?> onChanged;
+
+  const _MatchesDropdownField({
+    required this.label,
+    required this.icon,
+    required this.value,
+    required this.options,
+    required this.displayText,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return DropdownButtonFormField<T?>(
+      initialValue: options.contains(value) ? value : null,
+      decoration: InputDecoration(
+        labelText: label,
+        prefixIcon: Icon(icon, color: const Color(0xFF16A34A)),
+        filled: true,
+        fillColor: Colors.white,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 18,
+        ),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(18),
+          borderSide: const BorderSide(color: Color(0xFFD6E2D9)),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(18),
+          borderSide: const BorderSide(color: Color(0xFFD6E2D9)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(18),
+          borderSide: const BorderSide(
+            color: Color(0xFF16A34A),
+            width: 1.4,
+          ),
+        ),
+      ),
+      items: [
+        DropdownMenuItem<T?>(
+          value: null,
+          child: Text('Any'),
+        ),
+        ...options.map(
+          (option) => DropdownMenuItem<T?>(
+            value: option,
+            child: Text(displayText(option)),
+          ),
+        ),
+      ],
+      onChanged: onChanged,
+    );
   }
 }
 

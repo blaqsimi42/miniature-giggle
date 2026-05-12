@@ -972,7 +972,7 @@ class _HomeBottomNavBar extends StatelessWidget {
           _HomeNavItem(
             index: 1,
             icon: Icons.search,
-            label: 'Matches',
+            label: 'Search',
             active: currentIndex == 1,
             onTap: onTap,
           ),

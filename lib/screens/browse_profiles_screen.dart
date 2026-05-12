@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -55,6 +57,7 @@ class BrowseProfilesScreen extends StatefulWidget {
 
 class _BrowseProfilesScreenState extends State<BrowseProfilesScreen> {
   late DiscoverProfileBloc _bloc;
+  Stream<int>? _notificationStream;
   final AuthService _authService = AuthService();
   final UserService _userService = UserService();
   final StorageService _storageService = StorageService();
@@ -78,6 +81,11 @@ class _BrowseProfilesScreenState extends State<BrowseProfilesScreen> {
     );
     _bloc.add(const LoadDiscoverProfiles());
     _loadCurrentUserProfile();
+    // Prepare a stable notification unread-count stream so builders
+    // aren't recreating the underlying Firestore listeners on every rebuild.
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    _notificationStream =
+      uid == null ? null : NotificationService().streamUnreadCount(uid);
   }
 
   @override
@@ -256,42 +264,38 @@ class _BrowseProfilesScreenState extends State<BrowseProfilesScreen> {
                       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
                       child: _TopBar(
                         onMenu: _openDiscoverSidebar,
-                        onNotifications: () => Navigator.pushNamed(context, '/notifications'),
+                        onNotifications: () => Navigator.of(context).pushNamed('/notifications'),
                         onBoost: _showBoostAction,
+                        unreadStream: _notificationStream,
                       ),
                     ),
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: Material(
-                          color: Colors.transparent,
-                          child: InkWell(
-                            borderRadius: BorderRadius.circular(999),
-                            onTap: _showFilterAction,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                              decoration: BoxDecoration(
-                                color: kPrimaryGreen,
-                                borderRadius: BorderRadius.circular(999),
-                              ),
-                              child: const Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    'Discover',
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w800,
-                                      letterSpacing: 0.2,
-                                    ),
-                                  ),
-                                ],
-                              ),
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: const BoxDecoration(
+                              color: kPrimaryGreen,
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.travel_explore,
+                              color: Colors.white,
+                              size: 22,
                             ),
                           ),
-                        ),
+                          const SizedBox(width: 10),
+                          const Text(
+                            'Discover',
+                            style: TextStyle(
+                              color: kDeepGreen,
+                              fontSize: 28,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: -0.4,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                     Expanded(
@@ -513,8 +517,15 @@ class _BrowseProfilesScreenState extends State<BrowseProfilesScreen> {
   }
 
   Future<void> _openDiscoverSidebar() async {
+    // ensure we open the dialog on the root navigator so it isn't hidden
+    // by any nested navigators or route layers.
+    final rootContext = Navigator.of(context, rootNavigator: true).context;
+    // debug: log when menu is triggered
+    // ignore: avoid_print
+    print('Opening discover sidebar');
+
     await showGeneralDialog<void>(
-      context: context,
+      context: rootContext,
       barrierLabel: 'Discover sidebar',
       barrierDismissible: true,
       barrierColor: Colors.black.withAlpha((0.24 * 255).round()),
@@ -525,8 +536,11 @@ class _BrowseProfilesScreenState extends State<BrowseProfilesScreen> {
           child: Align(
             alignment: Alignment.centerLeft,
             child: FractionallySizedBox(
-              widthFactor: 0.84,
-              child: _DiscoverDrawer(
+                widthFactor: 0.84,
+                heightFactor: 1.0,
+                child: SizedBox(
+                  height: MediaQuery.of(dialogContext).size.height,
+                  child: _DiscoverDrawer(
                 profile: _currentUserProfile,
                 onCopyEmail: () => _copyValue(label: 'Email', value: _currentUserProfile?.email),
                 onCopyPhone: () => _copyValue(label: 'Phone number', value: _currentUserProfile?.phone),
@@ -542,7 +556,8 @@ class _BrowseProfilesScreenState extends State<BrowseProfilesScreen> {
                   Navigator.of(dialogContext).pop();
                   await _logout();
                 },
-              ),
+                  ),
+                ),
             ),
           ),
         );
@@ -732,7 +747,8 @@ class _TopBar extends StatelessWidget {
   final VoidCallback onMenu;
   final VoidCallback onNotifications;
   final VoidCallback? onBoost;
-  const _TopBar({required this.onMenu, required this.onNotifications, this.onBoost});
+  final Stream<int>? unreadStream;
+  const _TopBar({required this.onMenu, required this.onNotifications, this.onBoost, this.unreadStream});
 
   @override
   Widget build(BuildContext context) {
@@ -759,11 +775,7 @@ class _TopBar extends StatelessWidget {
             Stack(
               children: [
                 StreamBuilder<int>(
-                  stream: FirebaseAuth.instance.currentUser == null
-                      ? null
-                      : NotificationService().streamUnreadCount(
-                          FirebaseAuth.instance.currentUser!.uid,
-                        ),
+                  stream: unreadStream,
                   builder: (context, snapshot) {
                     final count = snapshot.data ?? 0;
                     return Stack(
@@ -832,6 +844,8 @@ class _DiscoverDrawer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final screenHeight = MediaQuery.of(context).size.height;
+    final bottomInset = MediaQuery.of(context).viewPadding.bottom;
     final name = profile?.fullName.trim().isNotEmpty == true ? profile!.fullName : 'Member';
     final email = profile?.email?.trim().isNotEmpty == true ? profile!.email! : 'No email added';
     final phone = profile?.phone?.trim().isNotEmpty == true ? profile!.phone! : 'No phone added';
@@ -840,30 +854,34 @@ class _DiscoverDrawer extends StatelessWidget {
     final currentUserId = profile?.uid.isNotEmpty == true
         ? profile!.uid
         : FirebaseAuth.instance.currentUser?.uid;
-    final completion = (profile?.profileCompletion ?? 0).round().clamp(0, 100);
     final location = _formatDiscoverLocation(profile?.location);
     final subtitleParts = [
-      if (profile?.isVerified == true) 'Verified',
       if (location.isNotEmpty) location,
     ];
 
     return Material(
-      color: Colors.transparent,
+      color: Colors.white,
       child: SafeArea(
-        child: ClipRRect(
+        child: SizedBox(
+          height: screenHeight,
+          child: ClipRRect(
           borderRadius: const BorderRadius.only(
             topRight: Radius.circular(32),
             bottomRight: Radius.circular(32),
           ),
-          child: Container(
-            color: kBackgroundCream,
-            height: MediaQuery.of(context).size.height,
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
-              physics: const NeverScrollableScrollPhysics(),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(context).size.height,
+            ),
+            child: Container(
+              color: Colors.white,
+              child: SingleChildScrollView(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
+                  child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
                   Container(
                 padding: const EdgeInsets.all(18),
                 decoration: BoxDecoration(
@@ -987,46 +1005,28 @@ class _DiscoverDrawer extends StatelessWidget {
                       ],
                     ),
                     const SizedBox(height: 18),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _DiscoverDrawerHeroStat(
-                            label: 'Profile',
-                            value: '$completion%',
-                            helper: 'Completed',
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: _DiscoverDrawerHeroStat(
-                            label: 'Status',
-                            value: profile?.isOnline == true ? 'Online' : 'Active',
-                            helper: profile?.isPremium == true
-                                ? 'Premium member'
-                                : 'Ready to discover',
-                          ),
-                        ),
-                      ],
+                    _DiscoverDrawerVerificationCard(
+                      isVerified: profile?.isVerified == true,
                     ),
                   ],
                 ),
                   ),
                   const SizedBox(height: 12),
-                  // Compact action grid — all items visible at a glance
                   Builder(builder: (ctx) {
-                    final smallStyle = const TextStyle(fontSize: 15, fontWeight: FontWeight.w700);
-                    final subtitleStyle = const TextStyle(fontSize: 12, color: Color(0xFF6B7280));
+                    final smallStyle = const TextStyle(fontSize: 18, fontWeight: FontWeight.w800);
+                    final subtitleStyle = const TextStyle(fontSize: 13, color: Color(0xFF6B7280));
                     Widget actionItem(IconData icon, String label, VoidCallback? onTap, {Color? color}) {
                       return InkWell(
                         onTap: onTap,
-                        borderRadius: BorderRadius.circular(10),
+                        borderRadius: BorderRadius.circular(12),
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                          height: 64,
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
                           child: Row(
                             children: [
-                              Icon(icon, size: 20, color: color ?? kPrimaryGreen),
-                              const SizedBox(width: 12),
-                              Flexible(child: Text(label, style: smallStyle, overflow: TextOverflow.ellipsis)),
+                              Icon(icon, size: 28, color: color ?? kPrimaryGreen),
+                              const SizedBox(width: 16),
+                              Expanded(child: Text(label, style: smallStyle, overflow: TextOverflow.ellipsis)),
                             ],
                           ),
                         ),
@@ -1035,47 +1035,53 @@ class _DiscoverDrawer extends StatelessWidget {
 
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.max,
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        // Primary actions — occupy upper half
-                        Expanded(
-                          flex: 5,
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              actionItem(Icons.star_outline, 'Go Premium', () {
-                                Navigator.of(ctx).pushNamed('/premium');
-                              }, color: const Color(0xFFFFB020)),
-                              actionItem(Icons.person_add_alt_1_outlined, 'Add guardian', () => Navigator.of(ctx).pushNamed('/add-guardian')),
-                              actionItem(Icons.favorite, 'Who liked you', currentUserId == null ? null : () => _showInterestRequestsSheet(ctx, currentUserId)),
-                              actionItem(Icons.bookmark, 'Saved profiles', currentUserId == null ? null : () => _showSavedProfilesSheet(ctx, currentUserId)),
-                            ],
-                          ),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            actionItem(
+                              Icons.star_outline,
+                              profile?.isPremium == true
+                                  ? 'Premium User'
+                                  : 'Go Premium',
+                              profile?.isPremium == true
+                                  ? null
+                                  : () {
+                                      Navigator.of(ctx).pushNamed(
+                                        '/payment',
+                                        arguments: const {
+                                          'initialPlanId': 'premium',
+                                        },
+                                      );
+                                    },
+                              color: const Color(0xFFFFB020),
+                            ),
+                            actionItem(Icons.person_add_alt_1_outlined, 'Add guardian', () => Navigator.of(ctx).pushNamed('/guardian/add')),
+                            actionItem(Icons.mark_email_unread_outlined, 'Interest requests', currentUserId == null ? null : () => _showInterestRequestsSheet(ctx, currentUserId)),
+                            actionItem(Icons.favorite_border, 'Profile likes', currentUserId == null ? null : () => _showProfileLikesSheet(ctx, currentUserId, isPremiumUser: profile?.isPremium == true)),
+                            actionItem(Icons.bookmark, 'Saved profiles', currentUserId == null ? null : () => _showSavedProfilesSheet(ctx, currentUserId)),
+                          ],
                         ),
                         const Divider(height: 1),
-                        // Secondary actions — occupy middle space
-                        Expanded(
-                          flex: 3,
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              actionItem(Icons.settings_outlined, 'Settings', () => Navigator.of(ctx).pushNamed('/settings')),
-                              actionItem(Icons.help_outline, 'Help & Support', () => Navigator.of(ctx).pushNamed('/help')),
-                              actionItem(Icons.share_outlined, 'Invite friends', () => Navigator.of(ctx).pushNamed('/invite')),
-                            ],
-                          ),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            actionItem(Icons.settings_outlined, 'Settings', () => Navigator.of(ctx).pushNamed('/settings')),
+                            actionItem(Icons.share_outlined, 'Invite friends', () => Navigator.of(ctx).pushNamed('/invite')),
+                          ],
                         ),
                         const Divider(height: 1),
-                        // Compact account row at bottom
                         Padding(
-                          padding: const EdgeInsets.only(top: 8),
+                          padding: const EdgeInsets.only(top: 8, left: 4, right: 4),
                           child: Row(
                             children: [
                               Expanded(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisSize: MainAxisSize.min,
                                   children: [
                                     Text(email, style: smallStyle, maxLines: 1, overflow: TextOverflow.ellipsis),
                                     const SizedBox(height: 6),
@@ -1083,24 +1089,44 @@ class _DiscoverDrawer extends StatelessWidget {
                                   ],
                                 ),
                               ),
-                              const SizedBox(width: 12),
-                              IconButton(
-                                padding: EdgeInsets.zero,
-                                constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
-                                icon: const Icon(Icons.logout_rounded, color: Colors.redAccent, size: 22),
-                                onPressed: onLogout,
-                                tooltip: 'Logout',
-                              ),
                             ],
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Padding(
+                          padding: EdgeInsets.only(
+                            left: 12,
+                            right: 12,
+                            bottom: bottomInset + 12,
+                          ),
+                          child: SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton.icon(
+                              onPressed: () async {
+                                await onLogout();
+                              },
+                              icon: const Icon(Icons.logout_rounded, color: Colors.white),
+                              label: const Padding(
+                                padding: EdgeInsets.symmetric(vertical: 14),
+                                child: Text('Logout', style: TextStyle(fontWeight: FontWeight.w800)),
+                              ),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.redAccent,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              ),
+                            ),
                           ),
                         ),
                       ],
                     );
                   }),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
+        ),
+        ),
         ),
       ),
     );
@@ -1225,6 +1251,179 @@ class _DiscoverDrawer extends StatelessWidget {
                   },
                 );
               },
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  void _showProfileLikesSheet(
+    BuildContext context,
+    String currentUserId, {
+    required bool isPremiumUser,
+  }) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => _DiscoverDrawerSheet(
+        title: 'Profile Likes',
+        subtitle: isPremiumUser
+            ? 'People who liked your profile.'
+            : 'Upgrade to Premium to reveal people who liked your profile.',
+        child: StreamBuilder<List<String>>(
+          stream: InteractionsService().getLikedByProfiles(currentUserId),
+          builder: (context, snapshot) {
+            final likedByIds = snapshot.data ?? const <String>[];
+            if (likedByIds.isEmpty) {
+              return const _DiscoverDrawerEmptyState(
+                icon: Icons.favorite_outline_rounded,
+                title: 'No profile likes yet',
+                subtitle: 'People who like your profile will appear here.',
+              );
+            }
+
+            final likesList = ListView.separated(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: likedByIds.length,
+              separatorBuilder: (context, index) =>
+                  const SizedBox(height: 12),
+              itemBuilder: (context, index) {
+                final likerId = likedByIds[index];
+                return FutureBuilder<UserModel?>(
+                  future: _browseCachedProfileFuture(likerId),
+                  builder: (context, profileSnapshot) {
+                    final user = profileSnapshot.data;
+                    final title = user?.fullName.trim().isNotEmpty == true
+                        ? user!.fullName
+                        : 'Someone liked you';
+                    final city = user?.location?['city']?.trim();
+                    final subtitle = [
+                      if (user?.occupation?.trim().isNotEmpty == true)
+                        user!.occupation!.trim(),
+                      if (city?.isNotEmpty == true) city!,
+                    ].join('  -  ');
+                    return _DiscoverDrawerProfileCard(
+                      title: title,
+                      subtitle: subtitle.isEmpty
+                          ? 'Liked your profile'
+                          : subtitle,
+                      trailingLabel: 'Liked you',
+                      imageUrl: user?.profilePictureUrl?.trim(),
+                      onTap: !isPremiumUser || user == null
+                          ? null
+                          : () => Navigator.of(context).pushNamed(
+                                '/view-profile',
+                                arguments: user,
+                              ),
+                    );
+                  },
+                );
+              },
+            );
+
+            if (isPremiumUser) {
+              return likesList;
+            }
+
+            return Stack(
+              children: [
+                likesList,
+                Positioned.fill(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(24),
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+                      child: Container(
+                        color: Colors.white.withValues(alpha: 0.62),
+                        padding: const EdgeInsets.all(20),
+                        child: Center(
+                          child: Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(20),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.88),
+                              borderRadius: BorderRadius.circular(24),
+                              border: Border.all(
+                                color: const Color(0xFFE5E7EB),
+                              ),
+                              boxShadow: const [
+                                BoxShadow(
+                                  color: Color(0x14000000),
+                                  blurRadius: 20,
+                                  offset: Offset(0, 8),
+                                ),
+                              ],
+                            ),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(
+                                  Icons.lock_rounded,
+                                  color: Color(0xFFAA7A00),
+                                  size: 28,
+                                ),
+                                const SizedBox(height: 12),
+                                const Text(
+                                  'Premium required',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    color: kDeepGreen,
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                const Text(
+                                  'Upgrade to Premium to see everyone who liked your profile.',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    color: Color(0xFF667085),
+                                    height: 1.4,
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                                SizedBox(
+                                  width: double.infinity,
+                                  child: ElevatedButton(
+                                    onPressed: () {
+                                      Navigator.of(context).pop();
+                                      Navigator.of(context).pushNamed(
+                                        '/payment',
+                                        arguments: const {
+                                          'initialPlanId': 'premium',
+                                        },
+                                      );
+                                    },
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: kPrimaryGreen,
+                                      foregroundColor: Colors.white,
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 14,
+                                      ),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(16),
+                                      ),
+                                    ),
+                                    child: const Text(
+                                      'Upgrade to Premium',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             );
           },
         ),
@@ -1522,53 +1721,67 @@ class _DiscoverDrawerEmptyState extends StatelessWidget {
   }
 }
 
-class _DiscoverDrawerHeroStat extends StatelessWidget {
-  final String label;
-  final String value;
-  final String helper;
+class _DiscoverDrawerVerificationCard extends StatelessWidget {
+  final bool isVerified;
 
-  const _DiscoverDrawerHeroStat({
-    required this.label,
-    required this.value,
-    required this.helper,
+  const _DiscoverDrawerVerificationCard({
+    required this.isVerified,
   });
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(22),
         border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
+          Row(
+            children: [
+              if (isVerified)
+                const _DiscoverVerifiedBadge()
+              else
+                Container(
+                  width: 28,
+                  height: 28,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.16),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: const Icon(
+                    Icons.verified_outlined,
+                    color: Colors.white,
+                    size: 18,
+                  ),
+                ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  isVerified ? 'Verified' : 'Not verified',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
           Text(
-            label,
+            isVerified
+                ? 'Your trust badge is active.'
+                : 'Verify your profile to boost trust.',
             style: TextStyle(
               color: Colors.white.withValues(alpha: 0.78),
               fontSize: 12,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            value,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            helper,
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.72),
-              fontSize: 12,
               fontWeight: FontWeight.w500,
+              height: 1.35,
             ),
           ),
         ],
@@ -1668,7 +1881,7 @@ class _ProfileCardStackState extends State<_ProfileCardStack> {
   @override
   Widget build(BuildContext context) {
     final cardWidth = (widget.availableWidth - 24).clamp(280.0, 460.0);
-    final cardHeight = widget.availableHeight.clamp(420.0, 900.0);
+    final cardHeight = (widget.availableHeight * 0.91).clamp(390.0, 800.0);
     final visibleProfiles = widget.profiles
         .where((profile) => !_dismissedProfileIds.contains(profile.uid))
         .toList();
@@ -2303,7 +2516,7 @@ class _DiscoverBottomNavBar extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           _NavItem(index: 0, active: currentIndex == 0, icon: Icons.search, label: 'Discover', onTap: onTap),
-          _NavItem(index: 1, active: currentIndex == 1, icon: Icons.favorite_border, label: 'Matches', onTap: onTap),
+          _NavItem(index: 1, active: currentIndex == 1, icon: Icons.favorite_border, label: 'Search', onTap: onTap),
           _NavItem(index: 2, active: currentIndex == 2, icon: Icons.chat_bubble_outline, label: 'Chats', onTap: onTap),
           _NavItem(index: 3, active: currentIndex == 3, icon: Icons.person_outline, label: 'Profile', onTap: onTap),
         ],
@@ -2356,7 +2569,3 @@ class _NavItem extends StatelessWidget {
     );
   }
 }
-
-
-
-

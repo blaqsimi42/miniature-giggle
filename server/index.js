@@ -1275,6 +1275,8 @@ app.post('/matches', async (req, res) => {
     const minHeight = f.minHeight != null ? Number(f.minHeight) : null;
     const maxHeight = f.maxHeight != null ? Number(f.maxHeight) : null;
     const religionFilter = f.religion || null;
+    const occupationFilter = f.occupation || null;
+    const locationLabelFilter = f.locationLabel || null;
     const locationFilter = f.location || null; // { lat: <num>, lng: <num>, radiusKm: <num> }
 
     const haversineKm = (lat1, lon1, lat2, lon2) => {
@@ -1299,7 +1301,18 @@ app.post('/matches', async (req, res) => {
       if (maxAge != null && (p.age == null || Number(p.age) > maxAge)) continue;
       if (minHeight != null && (p.height == null || Number(p.height) < minHeight)) continue;
       if (maxHeight != null && (p.height == null || Number(p.height) > maxHeight)) continue;
-      if (religionFilter != null && p.religion != null && String(p.religion).toLowerCase() !== String(religionFilter).toLowerCase()) continue;
+      if (religionFilter != null && String((p.religion || '')).toLowerCase() !== String(religionFilter).toLowerCase()) continue;
+      if (occupationFilter != null && !String((p.occupation || '')).toLowerCase().includes(String(occupationFilter).toLowerCase())) continue;
+
+      const locationLabel = [
+        p.location && p.location.city ? p.location.city : null,
+        p.location && p.location.state ? p.location.state : null,
+        p.location && p.location.country ? p.location.country : null,
+      ]
+        .filter(Boolean)
+        .join(', ');
+
+      if (locationLabelFilter != null && !String(locationLabel).toLowerCase().includes(String(locationLabelFilter).toLowerCase())) continue;
 
       // Location radius filter
       if (locationFilter && locationFilter.lat != null && locationFilter.lng != null && locationFilter.radiusKm != null) {
@@ -1376,19 +1389,14 @@ app.post('/matches', async (req, res) => {
       // Clamp
       score = Math.max(0, Math.min(100, Math.round(score)));
 
-      const locationLabel = [
-        p.location && p.location.city ? p.location.city : null,
-        p.location && p.location.country ? p.location.country : null,
-      ]
-        .filter(Boolean)
-        .join(', ');
-
       items.push({
         uid: d.id,
         profile: {
           fullName: p.fullName || null,
           age: p.age || null,
+          religion: p.religion || null,
           occupation: p.occupation || null,
+          height: p.height || null,
           locationLabel: locationLabel || null,
           profilePictureUrl: p.profilePictureUrl || null,
         },
