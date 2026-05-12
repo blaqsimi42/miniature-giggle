@@ -44,6 +44,15 @@ const Color _kChatWarmBorder = Color(0xFFF2E3CC);
 const Color _kChatBgTop = Color(0xFFFBF7F0);
 const Color _kChatBgBottom = Color(0xFFF5F8F2);
 
+// Lightweight in-file cache to dedupe concurrent profile fetches from UI builders
+final UserService _homeUserService = UserService();
+final Map<String, Future<UserModel?>> _homeProfileFutures = {};
+
+Future<UserModel?> _homeCachedProfileFuture(String uid) {
+  if (uid.trim().isEmpty) return Future.value(null);
+  return _homeProfileFutures.putIfAbsent(uid, () => _homeUserService.getUser(uid));
+}
+
 // --- ARCHITECTURE: MatchRepository ---
 class MatchRepository {
   static List<Map<String, dynamic>> getMockMatches() => List.generate(
@@ -295,7 +304,7 @@ class UserDashboardController extends ChangeNotifier {
     try {
       UserModel? p;
       for (var attempt = 0; attempt < _profileLoadAttempts; attempt++) {
-        p = await UserService().getUser(u.uid);
+        p = await _homeCachedProfileFuture(u.uid);
         if (p != null) {
           break;
         }
@@ -1701,7 +1710,8 @@ class _MatchesFilterSheetState extends State<_MatchesFilterSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    final rawKeyboardInset = MediaQuery.of(context).viewInsets.bottom;
+    final bottomInset = rawKeyboardInset < 0 ? 0.0 : rawKeyboardInset;
     return SafeArea(
       child: Padding(
         padding: EdgeInsets.fromLTRB(12, 24, 12, bottomInset + 12),
@@ -2065,7 +2075,7 @@ class _MatchesPhotoFallback extends StatelessWidget {
 }
 
 Future<List<UserModel>> _loadMatchedUsers(List<String> userIds) async {
-  final users = await Future.wait(userIds.map((userId) => UserService().getUser(userId)));
+  final users = await Future.wait(userIds.map((userId) => _homeCachedProfileFuture(userId)));
   return users.whereType<UserModel>().toList();
 }
 
@@ -3118,7 +3128,7 @@ class _ChatThreadPaneState extends State<_ChatThreadPane> {
     return FutureBuilder<UserModel?>(
       future: widget.peer.photoUrl?.isNotEmpty == true
           ? Future<UserModel?>.value(null)
-          : UserService().getUser(widget.peer.uid),
+          : _homeCachedProfileFuture(widget.peer.uid),
       builder: (context, peerSnapshot) {
         final resolvedPeerPhotoUrl = widget.peer.photoUrl?.isNotEmpty == true
             ? widget.peer.photoUrl
@@ -3749,7 +3759,7 @@ class _ChatUserAvatar extends StatelessWidget {
     return FutureBuilder<UserModel?>(
       future: photoUrl?.trim().isNotEmpty == true
           ? null
-          : UserService().getUser(uid),
+          : _homeCachedProfileFuture(uid),
       builder: (context, snapshot) {
         return PresenceAvatar(
           userId: uid,

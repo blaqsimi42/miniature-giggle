@@ -15,15 +15,38 @@ dotenv.config({ path: path.join(__dirname, '.env') });
 function normalizePhone(phone) {
   if (!phone) return null;
 
-  let cleaned = String(phone).trim().replace(/[^\d+]/g, '');
-  const hasPlus = cleaned.startsWith('+');
-  if (hasPlus) cleaned = cleaned.slice(1);
-  cleaned = cleaned.replace(/\D/g, '');
+    let raw = String(phone).trim();
+    // Remove common separators
+    raw = raw.replace(/[\s()\-]/g, '');
+    // Preserve leading + if present, otherwise just digits
+    const hasPlus = raw.startsWith('+');
+    raw = raw.replace(/[^+\d]/g, '');
 
-  if (!cleaned) return null;
-  if (!hasPlus && cleaned.length === 10) return `+1${cleaned}`;
-  if (cleaned.length >= 10) return `+${cleaned}`;
-  return null;
+    if (hasPlus) {
+      const digits = raw.slice(1).replace(/\D/g, '');
+      // basic E.164 length guard
+      if (digits.length < 8 || digits.length > 15) return null;
+      return `+${digits}`;
+    }
+
+    const digits = raw.replace(/\D/g, '');
+    if (!digits) return null;
+
+    // If a default country dial code is configured, use it for national numbers
+    const defaultDial = String(process.env.DEFAULT_COUNTRY_DIAL || '').trim();
+    if (digits.startsWith('0') && defaultDial) {
+      const noZero = digits.replace(/^0+/, '');
+      const normalized = `+${defaultDial}${noZero}`;
+      return normalized;
+    }
+
+    // If digits look like an international number (10..15 digits) assume E.164 without +
+    if (digits.length >= 10 && digits.length <= 15) {
+      return `+${digits}`;
+    }
+
+    // Fallback: invalid/unparseable
+    return null;
 }
 
 function normalizeServiceAccount(rawServiceAccount) {
@@ -1395,8 +1418,18 @@ app.post('/send-otp', async (req, res) => {
     return res.json({ success: true, sentAt: result.sentAt, phone: result.normalized });
   } catch (err) {
     console.error('send-otp error', err);
-    const resp = { error: String(err) };
+    const message = err && err.message ? String(err.message) : String(err);
+    const resp = { error: message };
     if (err && err.attempts) resp.attempts = err.attempts;
+
+    // Map known validation errors to 400 to avoid confusing 500s on client
+    if (message && message.toLowerCase().includes('invalid phone')) {
+      return res.status(400).json(resp);
+    }
+    if (message && message.toLowerCase().includes('firestore not configured')) {
+      return res.status(500).json(resp);
+    }
+
     return res.status(500).json(resp);
   }
 });

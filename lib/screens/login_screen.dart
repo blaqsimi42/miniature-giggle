@@ -44,6 +44,11 @@ class _LoginScreenState extends State<LoginScreen> {
       final phone = _phoneFieldKey.currentState?.fullPhoneNumber ?? _phoneController.text.trim();
       await AuthService().loginWithPhoneAndPassword(phone, _passwordController.text, context: context);
       if (!mounted) return;
+      // Ensure keyboard is dismissed before routing to avoid negative viewInsets on web.
+      try {
+        FocusManager.instance.primaryFocus?.unfocus();
+      } catch (_) {}
+
       unawaited(RoutePersistence.save('/home'));
       await ProfileCompletionGateService.routeAfterAuth(context);
     } catch (e) {

@@ -9,11 +9,18 @@ class OtpService {
     if (resp.statusCode >= 200 && resp.statusCode < 300) {
       return {'ok': true, 'data': resp.body.isNotEmpty ? jsonDecode(resp.body) : null};
     }
+    dynamic parsed;
+    try {
+      parsed = resp.body.isNotEmpty ? jsonDecode(resp.body) : null;
+    } catch (_) {
+      parsed = resp.body;
+    }
     return {
       'ok': false,
       'status': resp.statusCode,
-      'body': resp.body,
+      'body': parsed,
       'error': _extractError(resp.body),
+      'attempts': parsed is Map<String, dynamic> && parsed.containsKey('attempts') ? parsed['attempts'] : null,
     };
   }
 

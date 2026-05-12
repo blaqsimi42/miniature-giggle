@@ -25,6 +25,21 @@ class ProfileViewScreen extends StatefulWidget {
 
 class _ProfileViewScreenState extends State<ProfileViewScreen> {
   bool _sendingInterest = false;
+  late Future<UserModel?> _profileFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _profileFuture = UserService().getUser(widget.userId);
+  }
+
+  @override
+  void didUpdateWidget(covariant ProfileViewScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.userId != widget.userId) {
+      _profileFuture = UserService().getUser(widget.userId);
+    }
+  }
 
   Future<void> _openDirectChat(UserModel profile) async {
     final currentUser = AuthService().getCurrentUser();
@@ -108,7 +123,9 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final profileFuture = UserService().getUser(widget.userId);
+    // Use a cached future initialized in initState to avoid triggering
+    // repeated Firestore reads on every rebuild.
+    final profileFuture = _profileFuture;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF7F5F2),

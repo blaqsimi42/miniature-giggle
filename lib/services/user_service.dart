@@ -18,6 +18,12 @@ class UserService {
     'users',
   );
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  // Simple in-memory cache to avoid repeated identical reads during short-lived UI rebuilds.
+  // Keyed by normalized uid -> Future that resolves to UserModel?;
+  final Map<String, Future<UserModel?>> _userCache = {};
+  // Configurable TTL for cached futures. Default to 30 seconds.
+  Duration _cacheTTL = const Duration(seconds: 30);
+  final Map<String, DateTime> _userCacheTimestamps = {};
 
   DocumentReference<Map<String, dynamic>> _privateProfileRef(String uid) {
     return FirebaseFirestore.instance
@@ -92,6 +98,22 @@ class UserService {
 
   Future<UserModel?> getUser(String uid, {BuildContext? context}) async {
     final normalizedUid = uid.trim();
+
+    // If a context is provided we don't use the in-memory cache so callers
+    // that require a loading UI still show the LoadingScreen correctly.
+    if (context == null) {
+      final cached = _userCache[normalizedUid];
+      final ts = _userCacheTimestamps[normalizedUid];
+      if (cached != null && ts != null && DateTime.now().difference(ts) < _cacheTTL) {
+        return await cached;
+      }
+      // stale entry cleanup
+      if (cached != null) {
+        _userCache.remove(normalizedUid);
+        _userCacheTimestamps.remove(normalizedUid);
+      }
+    }
+
     Future<UserModel?> operation() async {
       try {
         if (normalizedUid.isEmpty) {
@@ -168,7 +190,18 @@ class UserService {
     if (context != null) {
       return await LoadingScreen.whileLoading(context, operation);
     }
-    return await operation();
+
+    // Store the future in the cache so concurrent callers for the same uid
+    // share the same underlying request and we avoid repeated reads.
+    final future = operation();
+    _userCache[normalizedUid] = future;
+    _userCacheTimestamps[normalizedUid] = DateTime.now();
+    try {
+      return await future;
+    } finally {
+      // keep cache entry for short TTL; invalidation occurs on updates
+      // or when entries age out on next access.
+    }
   }
 
   /// Returns true if the current authenticated user is marked as premium.
@@ -241,7 +274,53 @@ class UserService {
     if (context != null) {
       return await LoadingScreen.whileLoading(context, operation);
     }
-    return await operation();
+    final result = await operation();
+    // Invalidate cached user so subsequent reads fetch fresh data.
+    final key = uid.trim();
+    _userCache.remove(key);
+    _userCacheTimestamps.remove(key);
+    return result;
+  }
+
+  /// Invalidate cached entry for a specific user UID.
+  void invalidateUserCache(String uid) {
+    final key = uid.trim();
+    _userCache.remove(key);
+    _userCacheTimestamps.remove(key);
+  }
+
+  /// Invalidate cached entries for multiple UIDs.
+  void invalidateUserCaches(List<String> uids) {
+    for (final uid in uids) {
+      invalidateUserCache(uid);
+    }
+  }
+
+  /// Set the in-memory cache TTL used to consider entries fresh.
+  /// Useful for tests or adjusting behavior in low-network scenarios.
+  void setCacheTTL(Duration ttl) {
+    _cacheTTL = ttl;
+  }
+
+  /// Force a sweep to remove stale cache entries older than the current TTL.
+  void sweepStaleCacheEntries() {
+    final now = DateTime.now();
+    final expired = <String>[];
+    for (final entry in _userCacheTimestamps.entries) {
+      if (now.difference(entry.value) >= _cacheTTL) {
+        expired.add(entry.key);
+      }
+    }
+    for (final k in expired) {
+      _userCache.remove(k);
+      _userCacheTimestamps.remove(k);
+    }
+  }
+
+  /// Clear the entire in-memory user cache.
+  void clearUserCache() {
+    _userCache.clear();
+    _userCacheTimestamps.clear();
   }
 
   Future<void> updatePresence(

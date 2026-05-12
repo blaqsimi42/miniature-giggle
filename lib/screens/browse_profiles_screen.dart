@@ -27,6 +27,15 @@ const Color kDeepGreen = Color(0xFF0F3D2E);
 const Color kAccentGreen = Color(0xFF1F6F54);
 const double kCardRadius = 22.0;
 
+// File-scoped cache to dedupe profile fetches used by drawer helpers.
+final UserService _browseUserService = UserService();
+final Map<String, Future<UserModel?>> _browseProfileFutures = {};
+
+Future<UserModel?> _browseCachedProfileFuture(String uid) {
+  if (uid.trim().isEmpty) return Future.value(null);
+  return _browseProfileFutures.putIfAbsent(uid, () => _browseUserService.getUser(uid));
+}
+
 class BrowseProfilesScreen extends StatefulWidget {
   final ValueChanged<int>? onNavTap;
   final bool allowSwipe;
@@ -55,6 +64,8 @@ class _BrowseProfilesScreenState extends State<BrowseProfilesScreen> {
   int? _maxAge;
   UserModel? _currentUserProfile;
   int _profileStackRefreshVersion = 0;
+  // (removed unused per-state cache)
+
 
   @override
   void initState() {
@@ -1100,7 +1111,7 @@ class _DiscoverDrawer extends StatelessWidget {
               itemBuilder: (context, index) {
                 final request = requests[index];
                 return FutureBuilder<UserModel?>(
-                  future: UserService().getUser(request.senderId),
+                  future: _browseCachedProfileFuture(request.senderId),
                   builder: (context, profileSnapshot) {
                     final sender = profileSnapshot.data;
                     final senderName =
@@ -1161,7 +1172,7 @@ class _DiscoverDrawer extends StatelessWidget {
               itemBuilder: (context, index) {
                 final saved = savedProfiles[index];
                 return FutureBuilder<UserModel?>(
-                  future: UserService().getUser(saved.shortlistedUserId),
+                  future: _browseCachedProfileFuture(saved.shortlistedUserId),
                   builder: (context, profileSnapshot) {
                     final user = profileSnapshot.data;
                     final title = user?.fullName.trim().isNotEmpty == true

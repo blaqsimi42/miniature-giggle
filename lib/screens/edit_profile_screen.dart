@@ -872,24 +872,33 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   ),
                   const SizedBox(height: 8),
                   // Show Verify button when entered phone differs from saved phone
+                  // OR when a saved phone exists but is not yet verified.
                   Builder(builder: (_) {
                     final entered = phoneController.text.trim();
                     final normalized = ValidationService.normalizePhoneNumber(entered.startsWith('+') ? entered : entered) ?? '';
                     final existing = state.profile.phone?.trim() ?? '';
-                    final showVerify = normalized.isNotEmpty && normalized != existing;
+                    final savedUnverified = existing.isNotEmpty && state.profile.isVerified != true;
+                    final changedNumber = normalized.isNotEmpty && normalized != existing;
+                    final showVerify = savedUnverified || changedNumber;
                     if (!showVerify) return const SizedBox.shrink();
+
+                    // Prefer the normalized entered number when changed, otherwise use saved number
+                    final phoneToVerify = changedNumber ? normalized : existing;
+
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 8.0),
-                      child: ElevatedButton(
+                      child: ElevatedButton.icon(
+                        icon: const Icon(Icons.verified_user_outlined, size: 18),
+                        label: Text(savedUnverified ? 'Verify saved number' : 'Verify number'),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFF16A34A),
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.all(3),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                         ),
                         onPressed: () async {
                           final targetUid = state.profile.uid;
-                          final phoneToVerify = normalized;
-                          if (phoneToVerify.isEmpty) {
+                          if (phoneToVerify.trim().isEmpty) {
                             WidgetsBinding.instance.addPostFrameCallback((_) {
                               AppNotice.showError(context, 'Invalid phone');
                             });
@@ -923,7 +932,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                             });
                           }
                         },
-                        child: const Text('Verify number'),
                       ),
                     );
                   }),

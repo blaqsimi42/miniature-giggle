@@ -8,6 +8,7 @@ import 'user_service.dart';
 
 class ProfileCompletionGateService {
   const ProfileCompletionGateService._();
+  static bool _routingInProgress = false;
 
   static Future<UserModel?> _syncStoredCompletion(UserModel? profile) async {
     if (profile == null) return null;
@@ -60,25 +61,38 @@ class ProfileCompletionGateService {
     BuildContext context, {
     Map<String, dynamic>? homeArgs,
   }) async {
-    final profile = await loadCurrentProfile();
-    if (!context.mounted) return;
-    final completion = calculateProfileCompletion(profile);
-    if (completion.meetsDiscoveryThreshold) {
-      Navigator.of(context).pushReplacementNamed('/home', arguments: {
-        ...?homeArgs,
-        'completionPercent': completion.percent,
-      });
-      return;
-    }
+    if (_routingInProgress) return;
+    _routingInProgress = true;
+    try {
+      // Wait briefly for FirebaseAuth.currentUser to be available after sign-in.
+      var attempts = 0;
+      while (FirebaseAuth.instance.currentUser == null && attempts < 10) {
+        await Future.delayed(const Duration(milliseconds: 150));
+        attempts += 1;
+      }
 
-    Navigator.of(context).pushReplacementNamed(
-      '/profile-setup',
-      arguments: {
-        ...?homeArgs,
-        'initialStep': inferJourneyStep(profile),
-        'completionPercent': completion.percent,
-      },
-    );
+      final profile = await loadCurrentProfile();
+      if (!context.mounted) return;
+      final completion = calculateProfileCompletion(profile);
+      if (completion.meetsDiscoveryThreshold) {
+        Navigator.of(context).pushReplacementNamed('/home', arguments: {
+          ...?homeArgs,
+          'completionPercent': completion.percent,
+        });
+        return;
+      }
+
+      Navigator.of(context).pushReplacementNamed(
+        '/profile-setup',
+        arguments: {
+          ...?homeArgs,
+          'initialStep': inferJourneyStep(profile),
+          'completionPercent': completion.percent,
+        },
+      );
+    } finally {
+      _routingInProgress = false;
+    }
   }
 
   static Future<bool> ensureDiscoveryAccess(
