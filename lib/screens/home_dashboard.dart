@@ -27,6 +27,7 @@ import '../widgets/profile_form.dart';
 import '../widgets/app_notice.dart';
 import '../widgets/chat_options_sheet.dart';
 import '../widgets/image_cropper_screen.dart';
+import '../core/utils/device_safe_area.dart';
 import '../core/utils/validation_service.dart';
 import '../core/utils/currency_formatter.dart';
 
@@ -824,7 +825,7 @@ class _UserHomeScreenState extends State<UserHomeScreen>
   String _tabTitleForIndex(int index) {
     switch (index) {
       case 1:
-        return 'Matches';
+        return 'Search';
       case 2:
         return 'Chats';
       case 3:
@@ -909,7 +910,12 @@ class _UserHomeScreenState extends State<UserHomeScreen>
                 color: Colors.transparent,
                 child: SafeArea(
                   top: false,
-                  minimum: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                  minimum: EdgeInsets.fromLTRB(
+                    16,
+                    0,
+                    16,
+                    bottomNavOuterGap(context),
+                  ),
                   child: AnimatedSlide(
                     duration: const Duration(milliseconds: 220),
                     curve: Curves.easeOutCubic,

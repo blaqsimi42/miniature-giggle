@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/config/service_locator.dart';
+import '../core/utils/device_safe_area.dart';
 import '../services/auth_service.dart';
 import '../services/chat_service.dart';
 import '../services/premium_service.dart';
@@ -43,7 +44,12 @@ class CurrentUserScreen extends StatelessWidget {
       child: SafeArea(
         bottom: false,
         child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 112),
+          padding: EdgeInsets.fromLTRB(
+            16,
+            12,
+            16,
+            bottomContentPadding(context, base: 112),
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [

@@ -917,9 +917,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                         onPressed: sendingOtp
                             ? null
                             : () async {
+                                final navigator = Navigator.of(parentContext);
                                 final targetUid = state.profile.uid;
                                 if (phoneToVerify.trim().isEmpty) {
-                                  if (!mounted) return;
                                   AppNotice.showError(parentContext, 'Invalid phone');
                                   return;
                                 }
@@ -927,10 +927,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                                 setModalState(() => sendingOtp = true);
                                 try {
                                   final resp = await OtpService.sendOtp(uid: targetUid, phone: phoneToVerify);
+                                  if (!parentContext.mounted) return;
                                   if (resp['ok'] == true) {
-                                    if (!mounted) return;
                                     AppNotice.showSuccess(parentContext, 'Verification code sent.');
-                                    Navigator.of(parentContext).pushNamed('/verify-phone-link', arguments: {
+                                    navigator.pushNamed('/verify-phone-link', arguments: {
                                       'phone': phoneToVerify,
                                       'uid': targetUid,
                                       'sentAt': DateTime.now().toIso8601String(),
@@ -938,7 +938,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                                       'returnArgs': {'userId': widget.userId},
                                     });
                                   } else {
-                                    if (!mounted) return;
                                     setModalState(() => sendingOtp = false);
                                     AppNotice.showError(
                                       parentContext,
@@ -946,7 +945,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                                     );
                                   }
                                 } catch (e) {
-                                  if (!mounted) return;
+                                  if (!parentContext.mounted) return;
                                   setModalState(() => sendingOtp = false);
                                   AppNotice.showError(
                                     parentContext,

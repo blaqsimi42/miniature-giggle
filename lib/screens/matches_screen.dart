@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../core/utils/device_safe_area.dart';
 import '../screens/profile_view_screen.dart';
 import '../services/match_service.dart';
 import '../services/user_service.dart';
@@ -319,7 +320,10 @@ class _MatchesScreenState extends State<MatchesScreen> {
     final emptyMessage = _hasActiveFilters
         ? 'Sorry, we couldn\'t get a match.'
         : 'No profiles are available right now. Please check back shortly.';
-    final bottomActionInset = widget.embedOnly ? 112.0 : 24.0;
+    final bottomActionInset = bottomContentPadding(
+      context,
+      base: widget.embedOnly ? 112.0 : 24.0,
+    );
     final filteredItems = _applyClientSideFilters(_items);
     final visibleItems = _showAllMatches || filteredItems.length <= 5
         ? filteredItems
@@ -342,13 +346,14 @@ class _MatchesScreenState extends State<MatchesScreen> {
                         ],
                       )
                     : const Text(
-                        'Matches',
+                        'Search',
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
               ),
+              const SizedBox(width: 12),
               FilledButton.icon(
                 onPressed: _openFilterSheet,
                 icon: const Icon(Icons.tune_rounded, size: 18),
@@ -357,27 +362,6 @@ class _MatchesScreenState extends State<MatchesScreen> {
             ],
           ),
         ),
-        if (_hasActiveFilters)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF6FAF7),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: const Color(0xFFD6E2D9)),
-              ),
-              child: Text(
-                'Debug filters: ${jsonEncode(_filters)}',
-                style: const TextStyle(
-                  fontSize: 12,
-                  height: 1.4,
-                  color: Color(0xFF0F3D2E),
-                ),
-              ),
-            ),
-          ),
         Expanded(
           child: _loading && filteredItems.isEmpty
               ? const Center(child: CircularProgressIndicator())
@@ -515,7 +499,7 @@ class _MatchesScreenState extends State<MatchesScreen> {
     }
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Matches')),
+      appBar: AppBar(title: const Text('Search')),
       body: body,
     );
   }

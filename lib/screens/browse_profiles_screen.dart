@@ -20,6 +20,7 @@ import '../services/notification_service.dart';
 import '../services/profile_completion_gate_service.dart';
 import '../widgets/app_notice.dart';
 import '../widgets/primary_button.dart';
+import '../core/utils/device_safe_area.dart';
 import '../core/utils/validation_service.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 // 'dart:math' was previously used for stacked card transforms; no longer required.
@@ -301,11 +302,12 @@ class _BrowseProfilesScreenState extends State<BrowseProfilesScreen> {
                     Expanded(
                       child: LayoutBuilder(
                         builder: (context, constraints) {
-                            final bottomPadding = MediaQuery.of(context).viewPadding.bottom;
-                            final navBarExtra = bottomPadding > 0
-                              ? bottomPadding
-                              : (widget.showBottomNav ? 22.0 : 124.0);
-                            final stackHeight = constraints.maxHeight - navBarExtra;
+                            final reservedHeight = widget.showBottomNav ? 108.0 : 28.0;
+                            final stackHeight = usableHeightAboveSystemControls(
+                              context,
+                              totalHeight: constraints.maxHeight,
+                              reservedHeight: reservedHeight,
+                            );
                           if (visibleProfiles.isEmpty) {
                             return RefreshIndicator(
                               color: kPrimaryGreen,
@@ -1910,7 +1912,7 @@ class _ProfileCardStackState extends State<_ProfileCardStack> {
   @override
   Widget build(BuildContext context) {
     final cardWidth = (widget.availableWidth - 24).clamp(280.0, 460.0);
-    final cardHeight = (widget.availableHeight * 0.91).clamp(390.0, 800.0);
+    final cardHeight = (widget.availableHeight * 0.84).clamp(370.0, 780.0);
     final visibleProfiles = widget.profiles
         .where((profile) => !_dismissedProfileIds.contains(profile.uid))
         .toList();
@@ -2529,30 +2531,33 @@ class _DiscoverBottomNavBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      // sit flush to bottom; SafeArea(bottom: false) is used by parent
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: const BorderRadius.only(
-          topLeft: Radius.circular(20),
-          topRight: Radius.circular(20),
-          bottomLeft: Radius.circular(20),
-          bottomRight: Radius.circular(20),
+    return SafeArea(
+      top: false,
+      minimum: EdgeInsets.fromLTRB(16, 0, 16, bottomNavOuterGap(context)),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: const BorderRadius.only(
+            topLeft: Radius.circular(20),
+            topRight: Radius.circular(20),
+            bottomLeft: Radius.circular(20),
+            bottomRight: Radius.circular(20),
+          ),
+          boxShadow: [
+            BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 8, offset: const Offset(0, -2)),
+          ],
         ),
-        boxShadow: [
-          BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 8, offset: const Offset(0, -2)),
-        ],
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          _NavItem(index: 0, active: currentIndex == 0, icon: Icons.search, label: 'Discover', onTap: onTap),
-          _NavItem(index: 1, active: currentIndex == 1, icon: Icons.favorite_border, label: 'Search', onTap: onTap),
-          _NavItem(index: 2, active: currentIndex == 2, icon: Icons.chat_bubble_outline, label: 'Chats', onTap: onTap),
-          _NavItem(index: 3, active: currentIndex == 3, icon: Icons.person_outline, label: 'Profile', onTap: onTap),
-        ],
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            _NavItem(index: 0, active: currentIndex == 0, icon: Icons.search, label: 'Discover', onTap: onTap),
+            _NavItem(index: 1, active: currentIndex == 1, icon: Icons.favorite_border, label: 'Search', onTap: onTap),
+            _NavItem(index: 2, active: currentIndex == 2, icon: Icons.chat_bubble_outline, label: 'Chats', onTap: onTap),
+            _NavItem(index: 3, active: currentIndex == 3, icon: Icons.person_outline, label: 'Profile', onTap: onTap),
+          ],
+        ),
       ),
     );
   }
