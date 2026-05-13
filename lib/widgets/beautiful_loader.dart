@@ -56,9 +56,9 @@ class _BeautifulLoaderState extends State<BeautifulLoader> {
                       return QuboolPulsingLogo(
                         assetPath: 'assets/icons/logo.png',
                         width: logoWidth,
-                        minScale: 0.998,
-                        maxScale: 1.002,
-                        duration: const Duration(milliseconds: 2200),
+                        minScale: 0.95,
+                        maxScale: 1.045,
+                        duration: const Duration(milliseconds: 1450),
                       );
                     },
                   ),

@@ -2186,6 +2186,9 @@ class _ChatsTabState extends State<_ChatsTab> {
   bool _sendingMessage = false;
   bool _sendingImage = false;
 
+  bool get _supportThreadSelected =>
+      _selectedPeer?.uid == ChatService.supportUid;
+
   @override
   void initState() {
     super.initState();
@@ -2200,6 +2203,8 @@ class _ChatsTabState extends State<_ChatsTab> {
           AuthService().getCurrentUser()?.uid ?? '',
           initialTarget.uid,
         ),
+        isPinned: initialTarget.uid == ChatService.supportUid,
+        isSupportChat: initialTarget.uid == ChatService.supportUid,
       );
     }
     _loadCurrentUserPhoto();
@@ -2490,24 +2495,6 @@ class _ChatsTabState extends State<_ChatsTab> {
         }
 
         final canChat = snapshot.data ?? false;
-        if (!canChat) {
-          return _PremiumChatNotice(
-            onUpgrade: () async {
-              final result = await Navigator.pushNamed(
-                context,
-                '/payment',
-                arguments: const {
-                  'initialPlanId': 'premium',
-                },
-              );
-              if (!mounted || result == null) return;
-              setState(() {
-                // short-circuit chat access for UI refresh
-                _chatAccessFuture = Future.value(true);
-              });
-            },
-          );
-        }
 
         return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
           stream: _chatService.streamChatsForUser(currentUser.uid),
@@ -2552,9 +2539,13 @@ class _ChatsTabState extends State<_ChatsTab> {
                       final mutedBy = List<String>.from(
                         data['mutedBy'] as List? ?? const [],
                       );
+                      final pinnedFor = List<String>.from(
+                        data['pinnedFor'] as List? ?? const [],
+                      );
                       final unreadCounts = Map<String, dynamic>.from(
                         data['unreadCounts'] as Map? ?? const {},
                       );
+                      final isSupportChat = data['isSupportChat'] == true;
                       final peerId = participants.firstWhere(
                         (id) => id != currentUser.uid,
                         orElse: () => '',
@@ -2575,12 +2566,17 @@ class _ChatsTabState extends State<_ChatsTab> {
                         isMuted: mutedBy.contains(currentUser.uid),
                         chatId: doc.id,
                         unreadCount: unreadCount,
+                        isPinned: pinnedFor.contains(currentUser.uid),
+                        isSupportChat: isSupportChat || peerId == ChatService.supportUid,
                       );
                     })
                     .whereType<_ChatPeer>()
                     .where((peer) => peer.uid.isNotEmpty)
                     .toList()
                   ..sort((a, b) {
+                    if (a.isPinned != b.isPinned) {
+                      return a.isPinned ? -1 : 1;
+                    }
                     final aMillis = a.lastMessageAt?.millisecondsSinceEpoch ?? 0;
                     final bMillis = b.lastMessageAt?.millisecondsSinceEpoch ?? 0;
                     return bMillis.compareTo(aMillis);
@@ -2590,15 +2586,59 @@ class _ChatsTabState extends State<_ChatsTab> {
 
             return LayoutBuilder(
               builder: (context, constraints) {
+                if (!canChat && !_supportThreadSelected && peers.isEmpty) {
+                  return _PremiumChatNotice(
+                    onUpgrade: () async {
+                      final result = await Navigator.pushNamed(
+                        context,
+                        '/payment',
+                        arguments: const {
+                          'initialPlanId': 'premium',
+                        },
+                      );
+                      if (!mounted || result == null) return;
+                      setState(() {
+                        _chatAccessFuture = Future.value(true);
+                      });
+                    },
+                  );
+                }
+
                 final isWide = constraints.maxWidth > 900;
                 final listPane = _ChatListPane(
                   peers: peers,
                   selectedPeer: _selectedPeer,
-                  onSelect: _selectPeer,
+                  onSelect: (peer) {
+                    if (!canChat && !peer.isSupportChat) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Upgrade to Premium to open member chats.'),
+                        ),
+                      );
+                      return;
+                    }
+                    _selectPeer(peer);
+                  },
                 );
                 final threadPane = _selectedPeer == null
                     ? const Center(
                         child: Text('Select a conversation to open the chat.'),
+                      )
+                    : (!canChat && !_selectedPeer!.isSupportChat)
+                    ? _PremiumChatNotice(
+                        onUpgrade: () async {
+                          final result = await Navigator.pushNamed(
+                            context,
+                            '/payment',
+                            arguments: const {
+                              'initialPlanId': 'premium',
+                            },
+                          );
+                          if (!mounted || result == null) return;
+                          setState(() {
+                            _chatAccessFuture = Future.value(true);
+                          });
+                        },
                       )
                     : _ChatThreadPane(
                         peer: _selectedPeer!,
@@ -2606,35 +2646,37 @@ class _ChatsTabState extends State<_ChatsTab> {
                         currentUserId: currentUser.uid,
                         currentUserPhotoUrl: _currentUserPhotoUrl,
                         onBack: isWide ? null : () => _selectPeer(null),
-                        onShowActions: () => showChatOptionsSheet(
-                          context: context,
-                          onViewProfile: () => Navigator.of(context).pushNamed(
-                            '/view-profile',
-                            arguments: _selectedPeer!.uid,
-                          ),
-                          onShareProfile: () {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Profile sharing coming soon.'),
+                        onShowActions: _selectedPeer!.isSupportChat
+                            ? null
+                            : () => showChatOptionsSheet(
+                                context: context,
+                                onViewProfile: () => Navigator.of(context).pushNamed(
+                                  '/view-profile',
+                                  arguments: _selectedPeer!.uid,
+                                ),
+                                onShareProfile: () {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Profile sharing coming soon.'),
+                                    ),
+                                  );
+                                },
+                                onReport: () => _reportChat(
+                                  currentUserId: currentUser.uid,
+                                  peer: _selectedPeer!,
+                                ),
+                                onBlockUser: () => _blockUser(
+                                  currentUserId: currentUser.uid,
+                                  peer: _selectedPeer!,
+                                ),
+                                onClearChat: () {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Clear chat coming soon.'),
+                                    ),
+                                  );
+                                },
                               ),
-                            );
-                          },
-                          onReport: () => _reportChat(
-                            currentUserId: currentUser.uid,
-                            peer: _selectedPeer!,
-                          ),
-                          onBlockUser: () => _blockUser(
-                            currentUserId: currentUser.uid,
-                            peer: _selectedPeer!,
-                          ),
-                          onClearChat: () {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Clear chat coming soon.'),
-                              ),
-                            );
-                          },
-                        ),
                         messageController: _messageController,
                         draftAction: _draftAction,
                         sendingMessage: _sendingMessage,
@@ -2820,6 +2862,8 @@ class _ChatPeer {
   final bool isMuted;
   final String chatId;
   final int unreadCount;
+  final bool isPinned;
+  final bool isSupportChat;
 
   const _ChatPeer({
     required this.uid,
@@ -2830,6 +2874,8 @@ class _ChatPeer {
     this.isMuted = false,
     required this.chatId,
     this.unreadCount = 0,
+    this.isPinned = false,
+    this.isSupportChat = false,
   });
 }
 
@@ -2864,6 +2910,47 @@ class _UnreadBadge extends StatelessWidget {
           fontWeight: FontWeight.w700,
           height: 1,
         ),
+      ),
+    );
+  }
+}
+
+class _SupportIntroCard extends StatelessWidget {
+  final String message;
+
+  const _SupportIntroCard({required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFEAF5EE),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFCFE4D5)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(
+            Icons.support_agent_rounded,
+            color: _kChatGreen,
+            size: 18,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              message,
+              style: const TextStyle(
+                color: Color(0xFF24533A),
+                fontSize: 13,
+                height: 1.35,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -3091,6 +3178,14 @@ class _ChatThreadPane extends StatefulWidget {
 }
 
 class _ChatThreadPaneState extends State<_ChatThreadPane> {
+  String _supportWelcomeMessage() {
+    final currentUser = AuthService().getCurrentUser();
+    final name = currentUser?.displayName?.trim().isNotEmpty == true
+        ? currentUser!.displayName!.trim()
+        : (currentUser?.email?.split('@').first ?? 'there');
+    return 'Welcome to Qubool Nikah, how can we be of help you $name';
+  }
+
   void _showComposerInfo(String message) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
@@ -3254,15 +3349,28 @@ class _ChatThreadPaneState extends State<_ChatThreadPane> {
                                     ),
                                   ],
                                 ),
-                                child: Text(
-                                  'Say salam to ${widget.peer.displayName} and start the conversation.',
-                                  textAlign: TextAlign.center,
-                                  style: const TextStyle(
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w600,
-                                    color: _kChatMuted,
-                                    height: 1.45,
-                                  ),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    if (widget.peer.isSupportChat) ...[
+                                      _SupportIntroCard(
+                                        message: _supportWelcomeMessage(),
+                                      ),
+                                      const SizedBox(height: 14),
+                                    ],
+                                    Text(
+                                      widget.peer.isSupportChat
+                                          ? 'Send us a message and our team will respond here.'
+                                          : 'Say salam to ${widget.peer.displayName} and start the conversation.',
+                                      textAlign: TextAlign.center,
+                                      style: const TextStyle(
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w600,
+                                        color: _kChatMuted,
+                                        height: 1.45,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ),
@@ -3282,33 +3390,40 @@ class _ChatThreadPaneState extends State<_ChatThreadPane> {
                           itemCount: messages.length + 1,
                           itemBuilder: (context, index) {
                             if (index == 0) {
-                              return Container(
-                                margin: const EdgeInsets.only(bottom: 14),
-                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                                decoration: BoxDecoration(
-                                  color: _kChatWarmCard,
-                                  borderRadius: BorderRadius.circular(16),
-                                  border: Border.all(color: _kChatWarmBorder),
-                                ),
-                                child: const Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Icon(Icons.lock_outline_rounded, color: Color(0xFF876134), size: 18),
-                                    SizedBox(width: 10),
-                                    Expanded(
-                                      child: Text(
-                                        'Keep your conversations respectful and follow our community guidelines.',
-                                        style: TextStyle(
-                                          color: Color(0xFF6D573D),
-                                          fontSize: 13,
-                                          height: 1.35,
-                                          fontWeight: FontWeight.w500,
-                                        ),
+                              return widget.peer.isSupportChat
+                                  ? Padding(
+                                      padding: const EdgeInsets.only(bottom: 14),
+                                      child: _SupportIntroCard(
+                                        message: _supportWelcomeMessage(),
                                       ),
-                                    ),
-                                  ],
-                                ),
-                              );
+                                    )
+                                  : Container(
+                                      margin: const EdgeInsets.only(bottom: 14),
+                                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                                      decoration: BoxDecoration(
+                                        color: _kChatWarmCard,
+                                        borderRadius: BorderRadius.circular(16),
+                                        border: Border.all(color: _kChatWarmBorder),
+                                      ),
+                                      child: const Row(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Icon(Icons.lock_outline_rounded, color: Color(0xFF876134), size: 18),
+                                          SizedBox(width: 10),
+                                          Expanded(
+                                            child: Text(
+                                              'Keep your conversations respectful and follow our community guidelines.',
+                                              style: TextStyle(
+                                                color: Color(0xFF6D573D),
+                                                fontSize: 13,
+                                                height: 1.35,
+                                                fontWeight: FontWeight.w500,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    );
                             }
 
                             final message = messages[index - 1];

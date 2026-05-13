@@ -106,6 +106,8 @@ class _PersonalDetailsScreenState extends State<PersonalDetailsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+    final profileCreatedFor = (args?['profileCreatedFor'] as String?)?.trim() ?? '';
     return Scaffold(
       backgroundColor: const Color(0xFFFBFAF7),
       appBar: AppBar(
@@ -113,7 +115,7 @@ class _PersonalDetailsScreenState extends State<PersonalDetailsScreen> {
         elevation: 0,
         centerTitle: true,
         title: const Text(
-          'STEP 1 OF 2',
+          'STEP 2 OF 3',
           style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.black87),
         ),
         leading: IconButton(
@@ -126,7 +128,6 @@ class _PersonalDetailsScreenState extends State<PersonalDetailsScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Two-segment progress bar for STEP 1 of 2 (left fills when step 1 inputs complete)
             Padding(
               padding: const EdgeInsets.only(bottom: 16.0),
               child: Container(
@@ -134,15 +135,16 @@ class _PersonalDetailsScreenState extends State<PersonalDetailsScreen> {
                 decoration: BoxDecoration(borderRadius: BorderRadius.circular(8), color: Colors.white, boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0,2))]),
                 child: Row(
                   children: [
-                    Expanded(child: Container(decoration: BoxDecoration(color: _step1Complete ? _kGreen : Colors.white, borderRadius: const BorderRadius.horizontal(left: Radius.circular(8))))),
-                    Expanded(child: Container(color: Colors.white)),
+                    Expanded(child: Container(decoration: const BoxDecoration(color: _kGreen, borderRadius: BorderRadius.horizontal(left: Radius.circular(8))))),
+                    Expanded(child: Container(color: _step1Complete ? _kGreen : Colors.white)),
+                    const Expanded(child: SizedBox()),
                   ],
                 ),
               ),
             ),
             const Text('Create Account', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
             const SizedBox(height: 6),
-            const Text('Tell us about yourself', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: Color(0xFF6B7280))),
+            const Text('Tell us your name and phone number', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: Color(0xFF6B7280))),
             const SizedBox(height: 12),
             Container(
               decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 12, offset: Offset(0, 6))]),
@@ -150,6 +152,33 @@ class _PersonalDetailsScreenState extends State<PersonalDetailsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  if (profileCreatedFor.isNotEmpty) ...[
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF3FAF5),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: _kGreen.withValues(alpha: 0.18)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.badge_outlined, color: _kGreen, size: 18),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              'Profile created for $profileCreatedFor',
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.black87,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                  ],
                   TextField(
                     controller: _nameController,
                     decoration: InputDecoration(
@@ -160,7 +189,6 @@ class _PersonalDetailsScreenState extends State<PersonalDetailsScreen> {
                       contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
                     ),
                   ),
-                  const SizedBox(height: 12),
                   const SizedBox(height: 12),
 
                   // Phone row with flag picker
@@ -202,6 +230,7 @@ class _PersonalDetailsScreenState extends State<PersonalDetailsScreen> {
                         return;
                       }
                       final args = {
+                        'profileCreatedFor': profileCreatedFor,
                         'name': _nameController.text.trim(),
                         'phone': normalizedPhone,
                       };

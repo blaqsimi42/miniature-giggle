@@ -27,6 +27,24 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/chats/$(chatId)).data.participants;
     }
 
+    function supportUid() {
+      return 'support_account';
+    }
+
+    function isSupportParticipants(participants) {
+      return participants is list
+        && participants.size() == 2
+        && request.auth.uid in participants
+        && supportUid() in participants;
+    }
+
+    function isSupportChat(chatId) {
+      return chatParticipants(chatId) is list
+        && chatParticipants(chatId).size() == 2
+        && request.auth.uid in chatParticipants(chatId)
+        && supportUid() in chatParticipants(chatId);
+    }
+
     // Public profile data is readable to signed-in users, while contact data
     // lives in a private subcollection that only the profile owner can access.
     match /users/{userId} {
@@ -90,14 +108,17 @@ service cloud.firestore {
     match /chats/{chatId} {
       allow read: if signedIn() && request.auth.uid in resource.data.participants;
       allow create, update: if signedIn()
-        && requesterIsPremium()
+        && (
+          requesterIsPremium() ||
+          isSupportParticipants(request.resource.data.participants)
+        )
         && validParticipants(request.resource.data.participants);
 
       match /messages/{messageId} {
         allow read: if signedIn() &&
           request.auth.uid in chatParticipants(chatId);
         allow create: if signedIn() &&
-          requesterIsPremium() &&
+          (requesterIsPremium() || isSupportChat(chatId)) &&
           exists(/databases/$(database)/documents/chats/$(chatId)) &&
           request.resource.data.senderId == request.auth.uid &&
           request.resource.data.receiverId in chatParticipants(chatId) &&

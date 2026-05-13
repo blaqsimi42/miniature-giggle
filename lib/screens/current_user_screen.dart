@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../core/config/service_locator.dart';
 import '../services/auth_service.dart';
+import '../services/chat_service.dart';
 import '../services/premium_service.dart';
 import '../utils/profile_completion.dart';
 import 'edit_profile_screen.dart';
@@ -146,9 +147,19 @@ class CurrentUserScreen extends StatelessWidget {
                     icon: Icons.help_outline,
                     title: 'Help & Support',
                     subtitle: 'Get help and support',
-                    onTap: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Help & Support coming soon')),
+                    onTap: () async {
+                      final openedSupportChat = await Navigator.of(context).pushNamed('/help-support');
+                      if (openedSupportChat != true || !context.mounted) return;
+                      Navigator.of(context).pushReplacementNamed(
+                        '/home',
+                        arguments: {
+                          'userName': displayName,
+                          'initialIndex': 2,
+                          'initialChatTarget': const {
+                            'uid': ChatService.supportUid,
+                            'displayName': ChatService.supportDisplayName,
+                          },
+                        },
                       );
                     },
                   ),

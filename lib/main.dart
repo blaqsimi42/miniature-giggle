@@ -23,12 +23,15 @@ import 'screens/login_screen.dart';
 import 'screens/onboarding_screen.dart';
 import 'screens/password_setup_screen.dart';
 import 'screens/personal_details_screen.dart';
+import 'screens/profile_created_for_screen.dart';
 import 'screens/phone_login_screen.dart';
 import 'screens/verify_phone_link_screen.dart';
 import 'services/auth_service.dart';
 import 'services/route_persistence.dart';
 import 'screens/payment_screen.dart';
 import 'screens/manage_subscription_screen.dart';
+import 'screens/help_support_screen.dart';
+import 'screens/invite_friends_screen.dart';
 import 'screens/privacy_safety_screen.dart';
 import 'screens/notifications_screen.dart';
 import 'screens/notification_settings_screen.dart';
@@ -226,6 +229,7 @@ class MyApp extends StatelessWidget {
       home: const AppInitializer(),
       routes: {
         '/onboarding': (_) => const OnboardingScreen(),
+        '/profile-created-for': (_) => const ProfileCreatedForScreen(),
         '/personal': (_) => const PersonalDetailsScreen(),
         '/password': (_) => const PasswordSetupScreen(),
         '/verify-phone-link': (_) => const VerifyPhoneLinkScreen(),
@@ -279,6 +283,8 @@ class MyApp extends StatelessWidget {
           return ProfileViewScreen(userId: u?.uid ?? '');
         },
         '/privacy-safety': (_) => const PrivacySafetyScreen(),
+        '/help-support': (_) => const HelpSupportScreen(),
+        '/invite': (_) => const InviteFriendsScreen(),
         '/notifications': (_) => const NotificationsScreen(),
         '/notification-settings': (_) => const NotificationSettingsScreen(),
         '/profile': (ctx) {
@@ -291,12 +297,27 @@ class MyApp extends StatelessWidget {
           final args = route?.settings.arguments;
           String userName;
           int initialIndex = 0;
+          ChatLaunchTarget? initialChatTarget;
           if (args is String) {
             userName = args;
           } else if (args is Map<String, dynamic> && args['userName'] is String) {
             userName = args['userName'] as String;
             if (args['initialIndex'] is int) {
               initialIndex = args['initialIndex'] as int;
+            }
+            if (args['initialChatTarget'] is ChatLaunchTarget) {
+              initialChatTarget = args['initialChatTarget'] as ChatLaunchTarget;
+            } else if (args['initialChatTarget'] is Map) {
+              final target = Map<String, dynamic>.from(
+                args['initialChatTarget'] as Map,
+              );
+              if (target['uid'] is String && target['displayName'] is String) {
+                initialChatTarget = ChatLaunchTarget(
+                  uid: target['uid'] as String,
+                  displayName: target['displayName'] as String,
+                  photoUrl: target['photoUrl'] as String?,
+                );
+              }
             }
           } else if (args is Map && args['name'] is String) {
             userName = args['name'] as String;
@@ -307,7 +328,11 @@ class MyApp extends StatelessWidget {
             final u = AuthService().getCurrentUser();
             userName = u?.displayName ?? u?.email?.split('@').first ?? 'User';
           }
-          return UserHomeScreen(userName: userName, initialIndex: initialIndex);
+          return UserHomeScreen(
+            userName: userName,
+            initialIndex: initialIndex,
+            initialChatTarget: initialChatTarget,
+          );
         },
       },
     );

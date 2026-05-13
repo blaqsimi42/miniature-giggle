@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
-import '../widgets/beautiful_loader.dart';
 import '../services/profile_completion_gate_service.dart';
 import '../services/route_persistence.dart';
 import '../utils/profile_completion.dart';
@@ -45,9 +44,6 @@ class _AppInitializerState extends State<AppInitializer> {
     if (_started) return;
     _started = true;
 
-    // Show the overlay loader while we preload images and do early setup.
-    LoadingScreen.show(context);
-
     // List of images we want to ensure are ready for display.
     // Only include assets that actually exist in the repository to avoid
     // 404s during web development.
@@ -77,7 +73,6 @@ class _AppInitializerState extends State<AppInitializer> {
     // Check for a saved last route (from previous session) and navigate there.
     final saved = await RoutePersistence.getSaved();
     final currentUser = FirebaseAuth.instance.currentUser;
-    LoadingScreen.hide();
     if (!mounted) return;
 
     final route = saved?['route'] as String?;
@@ -129,7 +124,7 @@ class _AppInitializerState extends State<AppInitializer> {
 
   @override
   Widget build(BuildContext context) {
-    // While initialization is happening, show an empty scaffold — the loader overlay will be visible.
+    // Keep startup visually quiet and route away as soon as initialization finishes.
     return const Scaffold(body: SizedBox.expand());
   }
 }

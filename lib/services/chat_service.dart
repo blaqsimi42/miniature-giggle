@@ -5,6 +5,8 @@ import '../widgets/beautiful_loader.dart';
 import '../models/message_model.dart';
 
 class ChatService {
+  static const String supportUid = 'support_account';
+  static const String supportDisplayName = 'Qubool Support';
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   String chatIdFor(String a, String b) {
@@ -100,6 +102,38 @@ class ChatService {
         .collection('chats')
         .where('participants', arrayContains: userId)
         .snapshots();
+  }
+
+  Future<void> ensureSupportConversationForUser({
+    required String userId,
+    required String userDisplayName,
+    String? userPhotoUrl,
+  }) async {
+    final chatId = chatIdFor(userId, supportUid);
+    final chatRef = _firestore.collection('chats').doc(chatId);
+    final trimmedName = userDisplayName.trim().isNotEmpty
+        ? userDisplayName.trim()
+        : 'there';
+    final welcomeMessage =
+        'Welcome to Qubool Nikah, how can we be of help you $trimmedName';
+
+    await chatRef.set({
+      'participants': [userId, supportUid]..sort(),
+      'participantNames': {
+        userId: trimmedName == 'there' ? 'User' : trimmedName,
+        supportUid: supportDisplayName,
+      },
+      'participantPhotoUrls': {
+        if (userPhotoUrl != null && userPhotoUrl.trim().isNotEmpty)
+          userId: userPhotoUrl.trim(),
+      },
+      'pinnedFor': FieldValue.arrayUnion([userId]),
+      'isSupportChat': true,
+      'lastMessage': welcomeMessage,
+      'lastMessageAt': Timestamp.now(),
+      'supportIntro': welcomeMessage,
+      'unreadCounts.$userId': 0,
+    }, SetOptions(merge: true));
   }
 
   Future<void> muteChatForUser({

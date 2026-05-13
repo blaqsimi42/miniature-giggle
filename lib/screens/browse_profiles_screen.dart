@@ -538,24 +538,33 @@ class _BrowseProfilesScreenState extends State<BrowseProfilesScreen> {
             child: FractionallySizedBox(
                 widthFactor: 0.84,
                 heightFactor: 1.0,
-                child: SizedBox(
-                  height: MediaQuery.of(dialogContext).size.height,
-                  child: _DiscoverDrawer(
-                profile: _currentUserProfile,
-                onCopyEmail: () => _copyValue(label: 'Email', value: _currentUserProfile?.email),
-                onCopyPhone: () => _copyValue(label: 'Phone number', value: _currentUserProfile?.phone),
-                onOpenPhotoActions: () {
-                  Navigator.of(dialogContext).pop();
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    if (mounted) {
-                      _showDrawerPhotoActions();
-                    }
-                  });
-                },
-                onLogout: () async {
-                  Navigator.of(dialogContext).pop();
-                  await _logout();
-                },
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  child: ClipRRect(
+                    borderRadius: const BorderRadius.only(
+                      topRight: Radius.circular(28),
+                      bottomRight: Radius.circular(28),
+                    ),
+                    child: SizedBox(
+                      height: MediaQuery.of(dialogContext).size.height,
+                      child: _DiscoverDrawer(
+                    profile: _currentUserProfile,
+                    onCopyEmail: () => _copyValue(label: 'Email', value: _currentUserProfile?.email),
+                    onCopyPhone: () => _copyValue(label: 'Phone number', value: _currentUserProfile?.phone),
+                    onOpenPhotoActions: () {
+                      Navigator.of(dialogContext).pop();
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        if (mounted) {
+                          _showDrawerPhotoActions();
+                        }
+                      });
+                    },
+                    onLogout: () async {
+                      Navigator.of(dialogContext).pop();
+                      await _logout();
+                    },
+                      ),
+                    ),
                   ),
                 ),
             ),
@@ -1069,7 +1078,7 @@ class _DiscoverDrawer extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            actionItem(Icons.settings_outlined, 'Settings', () => Navigator.of(ctx).pushNamed('/settings')),
+                            actionItem(Icons.settings_outlined, 'Settings', () => Navigator.of(ctx).pushNamed('/app-settings')),
                             actionItem(Icons.share_outlined, 'Invite friends', () => Navigator.of(ctx).pushNamed('/invite')),
                           ],
                         ),
@@ -1111,7 +1120,7 @@ class _DiscoverDrawer extends StatelessWidget {
                                 child: Text('Logout', style: TextStyle(fontWeight: FontWeight.w800)),
                               ),
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.redAccent,
+                                backgroundColor: kPrimaryGreen,
                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                               ),
                             ),
@@ -1854,8 +1863,10 @@ class _ProfileCardStackState extends State<_ProfileCardStack> {
     required String profileId,
     required int visibleCount,
   }) async {
+    await Future<void>.delayed(const Duration(seconds: 2));
+    if (!mounted) return;
+
     if (visibleCount <= 1) {
-      if (!mounted) return;
       setState(() {
         _dismissedProfileIds.add(profileId);
         _currentIndex = 0;

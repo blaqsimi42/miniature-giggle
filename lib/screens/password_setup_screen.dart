@@ -5,6 +5,7 @@ import '../widgets/primary_button.dart';
 import '../services/auth_service.dart';
 import '../core/utils/validation_service.dart';
 import '../services/otp_service.dart';
+import '../services/user_service.dart';
 import '../widgets/app_notice.dart';
 
 const Color _kGreen = Color(0xFF16A34A);
@@ -49,10 +50,12 @@ class _PasswordSetupScreenState extends State<PasswordSetupScreen> {
   }
 
   Future<void> _completeSignUp({
+    required String? prefilledProfileCreatedFor,
     required String? prefilledName,
     required String? prefilledPhone,
   }) async {
     final navigator = Navigator.of(context);
+    final profileCreatedFor = prefilledProfileCreatedFor?.trim() ?? '';
     final name = prefilledName?.trim() ?? '';
     final phoneRaw = prefilledPhone?.trim() ?? '';
     final normalizedPhone = phoneRaw.startsWith('+') ? phoneRaw : (phoneRaw.isNotEmpty ? '+$phoneRaw' : '');
@@ -78,6 +81,12 @@ class _PasswordSetupScreenState extends State<PasswordSetupScreen> {
       final uid = cred.user?.uid;
       if (uid == null) throw Exception('Failed to create auth user');
       if (kDebugMode) debugPrint('[DEBUG signup] created phone-password user uid=$uid');
+
+      if (profileCreatedFor.isNotEmpty) {
+        await UserService().updateUser(uid, {
+          'profileCreatedFor': profileCreatedFor,
+        });
+      }
 
       // Start server-side OTP flow: request OTP to be sent to phone
       try {
@@ -115,6 +124,7 @@ class _PasswordSetupScreenState extends State<PasswordSetupScreen> {
   Widget build(BuildContext context) {
     final pwd = _passwordController.text;
     final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+    final prefilledProfileCreatedFor = args?['profileCreatedFor'] as String?;
     final prefilledName = args?['name'] as String?;
     final prefilledPhone = args?['phone'] as String?;
     return Scaffold(
@@ -123,7 +133,7 @@ class _PasswordSetupScreenState extends State<PasswordSetupScreen> {
         elevation: 0,
         centerTitle: true,
         title: const Text(
-          'STEP 2 OF 2',
+          'STEP 3 OF 3',
           style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
         ),
       ),
@@ -132,17 +142,19 @@ class _PasswordSetupScreenState extends State<PasswordSetupScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Two-segment progress bar showing step1 completion on the left and step2 progress on the right
             Padding(
               padding: const EdgeInsets.only(bottom: 16.0),
               child: Builder(builder: (ctx) {
+                final relationFilled =
+                    (prefilledProfileCreatedFor?.trim().isNotEmpty ?? false);
                 final leftFilled = (prefilledName?.trim().isNotEmpty ?? false) && (prefilledPhone?.trim().isNotEmpty ?? false);
                 return Container(
                   height: 8,
                   decoration: BoxDecoration(borderRadius: BorderRadius.circular(8), color: Colors.white, boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0,2))]),
                   child: Row(
                     children: [
-                      Expanded(child: Container(decoration: BoxDecoration(color: leftFilled ? _kGreen : Colors.white, borderRadius: const BorderRadius.horizontal(left: Radius.circular(8))))),
+                      Expanded(child: Container(decoration: BoxDecoration(color: relationFilled ? _kGreen : Colors.white, borderRadius: const BorderRadius.horizontal(left: Radius.circular(8))))),
+                      Expanded(child: Container(color: leftFilled ? _kGreen : Colors.white)),
                       Expanded(child: Container(decoration: BoxDecoration(color: _step2Complete ? _kGreen : Colors.white, borderRadius: const BorderRadius.horizontal(right: Radius.circular(8))))),
                     ],
                   ),
@@ -187,6 +199,8 @@ class _PasswordSetupScreenState extends State<PasswordSetupScreen> {
                     onPressed: _isSubmitting
                         ? null
                         : () => _completeSignUp(
+                              prefilledProfileCreatedFor:
+                                  prefilledProfileCreatedFor,
                               prefilledName: prefilledName,
                               prefilledPhone: prefilledPhone,
                             ),

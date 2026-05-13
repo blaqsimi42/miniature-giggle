@@ -78,6 +78,13 @@ class AppSettingsScreen extends StatelessWidget {
                 ),
                 const Divider(height: 1),
                 SettingsTile(
+                  icon: Icons.shield_outlined,
+                  title: 'Manage Guardian Access',
+                  subtitle: 'Add or update guardian support for your account',
+                  onTap: () => Navigator.of(context).pushNamed('/guardian/add'),
+                ),
+                const Divider(height: 1),
+                SettingsTile(
                   icon: Icons.workspace_premium_outlined,
                   title: 'Manage Subscription',
                   subtitle: 'Review your plan and billing options',
