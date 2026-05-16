@@ -319,12 +319,13 @@ class _MatchesScreenState extends State<MatchesScreen> {
   Widget build(BuildContext context) {
     final emptyMessage = _hasActiveFilters
         ? 'Sorry, we couldn\'t get a match.'
-        : 'No profiles are available right now. Please check back shortly.';
+        : 'Use filters to search for profiles that match your preference.';
     final bottomActionInset = bottomContentPadding(
       context,
       base: widget.embedOnly ? 112.0 : 24.0,
     );
     final filteredItems = _applyClientSideFilters(_items);
+    final shouldHideResultsUntilFiltered = !_hasActiveFilters;
     final visibleItems = _showAllMatches || filteredItems.length <= 5
         ? filteredItems
         : filteredItems.take(5).toList();
@@ -333,37 +334,85 @@ class _MatchesScreenState extends State<MatchesScreen> {
       children: [
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
-          child: Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: _hasActiveFilters
-                    ? Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          for (final entry in _filters.entries)
-                            Chip(label: Text('${entry.key}: ${entry.value}')),
-                        ],
-                      )
-                    : const Text(
-                        'Search',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-              ),
-              const SizedBox(width: 12),
-              FilledButton.icon(
-                onPressed: _openFilterSheet,
-                icon: const Icon(Icons.tune_rounded, size: 18),
-                label: const Text('Filters'),
-              ),
+              if (_hasActiveFilters) ...[
+                FilledButton.icon(
+                  onPressed: _openFilterSheet,
+                  icon: const Icon(Icons.tune_rounded, size: 18),
+                  label: Text(_hasActiveFilters ? 'Update filters' : 'Filters'),
+                ),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final entry in _filters.entries)
+                      Chip(label: Text('${entry.key}: ${entry.value}')),
+                  ],
+                ),
+              ],
             ],
           ),
         ),
         Expanded(
-          child: _loading && filteredItems.isEmpty
+          child: shouldHideResultsUntilFiltered
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 24,
+                        vertical: 28,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(24),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: Color(0x12000000),
+                            blurRadius: 20,
+                            offset: Offset(0, 10),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.manage_search_rounded,
+                            size: 56,
+                            color: Colors.black26,
+                          ),
+                          SizedBox(height: 12),
+                          Text(
+                            'Use filters to search for profiles that match your preference.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(fontSize: 16),
+                          ),
+                          SizedBox(height: 8),
+                          Text(
+                            'Choose your preferred age, height, religion, occupation, or location to see filtered results.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: Color(0xFF667085),
+                              height: 1.45,
+                            ),
+                          ),
+                          SizedBox(height: 12),
+                          FilledButton.icon(
+                            onPressed: _openFilterSheet,
+                            icon: Icon(Icons.tune_rounded, size: 18),
+                            label: Text('Filters'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                )
+              : _loading && filteredItems.isEmpty
               ? const Center(child: CircularProgressIndicator())
               : filteredItems.isEmpty
                   ? Center(
@@ -466,7 +515,7 @@ class _MatchesScreenState extends State<MatchesScreen> {
                       ],
                     ),
         ),
-        if (_nextPageToken != null)
+        if (!shouldHideResultsUntilFiltered && _nextPageToken != null)
           SafeArea(
             top: false,
             child: Padding(
